@@ -1,0 +1,11 @@
+{
+    "name": "john12321/john-utils",
+    "type": "library",
+    "authors": [
+        {
+            "name": "Jcai12321",
+            "email": "603480498@qq.com"
+        }
+    ],
+    "require": {}
+}

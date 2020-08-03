@@ -1,0 +1,6 @@
+.gitignore
+.idea
+.git
+.git/*
+.idea/*
+/vendor/
