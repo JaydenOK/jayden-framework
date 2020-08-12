@@ -3,7 +3,8 @@
 use ArrayTree\Tree;
 
 //加载命名空间
-include_once(__DIR__ . '/bootstrap.php');
+include_once('../bootstrap.php');
+
 
 $dataList = array(
     0 => array('catid' => '4', 'name' => '某某有限公司', 'pid' => '0', 'sort' => '1',),
