@@ -1,8 +1,10 @@
 <?php
 
-use ArrayTree\Tree;
 
 //加载命名空间
+
+use module\arraytree\Tree;
+
 include_once('../bootstrap.php');
 
 

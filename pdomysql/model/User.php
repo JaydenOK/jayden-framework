@@ -1,8 +1,8 @@
 <?php
 
-namespace model;
+namespace module\model;
 
-use lib\Crud;
+use module\lib\Crud;
 
 class User extends Crud
 {

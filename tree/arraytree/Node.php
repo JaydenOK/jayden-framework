@@ -2,7 +2,7 @@
 /**
  * 数据节点类
  */
-namespace ArrayTree;
+namespace module\arraytree;
 
 class Node
 {

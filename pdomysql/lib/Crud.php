@@ -1,5 +1,5 @@
 <?php
-namespace lib;
+namespace module\lib;
 
 class Crud
 {

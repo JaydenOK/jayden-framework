@@ -1,6 +1,6 @@
 <?php
 /**
- * 自动加载类
+ * PSR-4 自动加载类
  * PSR-4 Autoloader
  * https://github.com/php-fig/fig-standards/blob/master/accepted/PSR-4-autoloader-examples.md
  * Class Autoloader
@@ -11,7 +11,7 @@ class Autoloader
 
     static protected $_Instance;
 
-    static public function GetInstance()
+    static public function getInstance()
     {
         if (!self::$_Instance) {
             self::$_Instance = new self();

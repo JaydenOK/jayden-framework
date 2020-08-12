@@ -1,14 +1,14 @@
 <?php
 
 
-use lib\DB;
+use module\lib\DB;
 
 require '../bootstrap.php';
 
 $db = new DB();
 
 
-$sql = "select * from `user` where uid=:uid";
+$sql = "select * from `user` where uid=:uid asd";
 $param = [
     'uid' => 3
 ];

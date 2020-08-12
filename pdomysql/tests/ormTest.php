@@ -1,6 +1,7 @@
-<?php 
+<?php
 
-use model\User;
+
+use module\model\User;
 
 require '../bootstrap.php';
 

@@ -3,7 +3,7 @@
  * 树处理类
  */
 
-namespace ArrayTree;
+namespace module\arraytree;
 
 use Exception;
 
