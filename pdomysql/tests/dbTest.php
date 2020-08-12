@@ -8,7 +8,7 @@ require '../bootstrap.php';
 $db = new DB();
 
 
-$sql = "select * from `user` where uid=:uid asd";
+$sql = "select * from `user` where uid=:uid";
 $param = [
     'uid' => 3
 ];

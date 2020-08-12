@@ -43,5 +43,6 @@ $xml = '<xml>
 ';
 
 $array = Xml::xml2array($xml);
+$xml = Xml::array2xml($array);
 
-print_r($array);
+print_r($xml);
