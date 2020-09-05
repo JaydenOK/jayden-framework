@@ -11,6 +11,7 @@
     "ext-pdo": "*",
     "ext-libxml": "*",
     "ext-simplexml": "*",
-    "ext-json": "*"
+    "ext-json": "*",
+    "ext-bcmath": "*"
   }
 }
