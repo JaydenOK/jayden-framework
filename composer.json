@@ -12,6 +12,7 @@
     "ext-libxml": "*",
     "ext-simplexml": "*",
     "ext-json": "*",
-    "ext-bcmath": "*"
+    "ext-bcmath": "*",
+    "rakit/validation": "^1.4"
   }
 }
