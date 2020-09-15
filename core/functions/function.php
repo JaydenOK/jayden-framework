@@ -9,12 +9,6 @@
 //执行 : sudo /usr/local/infobright/ib_manager.sh start 5888
 
 // 指定端口及sock登录
-// mysql> mysql -uroot -pWLsPezLe6YG3JeAK --socket=/tmp/mysql_4580.sock --port=4580 
-// mysql> mysql -uroot -pWLsPezLe6YG3JeAK --socket=/tmp/mysql-ib_5888.sock --port=5888
-// mysql> mysql -uroot -pWLsPezLe6YG3JeAK --socket=/tmp/mysql-ib_5889.sock --port=5889
-
-// grant all on *.* to 'root'@'129.204.136.130' identified by 'WLsPezLe6YG3JeAK';
-// flush privileges;
 
 //玩家接口连接后台的端口
 // <User_Connect_Addr>
