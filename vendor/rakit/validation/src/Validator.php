@@ -102,7 +102,9 @@ class Validator
         if (!$validator) {
             throw new RuleNotFoundException("Validator '{$rule}' is not registered", 1);
         }
-
+        /**
+         * @var $clonedValidator Rule
+         */
         $clonedValidator = clone $validator;
         $clonedValidator->fillParameters($params);
 
