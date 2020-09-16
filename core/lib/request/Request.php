@@ -1,5 +1,7 @@
 <?php
 
+namespace app\core\lib\request;
+
 /**
  * The 'Request' class is a wrapper for HTTP requests.
  */
@@ -845,4 +847,10 @@ class Request
         parse_str(static::body(), $input);
         return static::$input = (array)$_GET + (array)$_POST + $input;
     }
+
+    public static function getBodyArray()
+    {
+        return json_decode(static::body(), true);
+    }
+
 }

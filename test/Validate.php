@@ -1,12 +1,17 @@
 <?php
 
+namespace app\test;
+
+use app\core\lib\request\Request;
 use Rakit\Validation\Helper;
 use Rakit\Validation\Validator;
 
 class Validate
 {
+
     public function run($body)
     {
+        print_r($body);
         $arr = [
             'a' => [
                 'aa' => [

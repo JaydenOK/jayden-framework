@@ -1,5 +1,12 @@
 <?php
 
+namespace app\core\lib;
+
+use app\core\lib\request\Request;
+use Exception;
+use ReflectionClass;
+use ReflectionException;
+
 class Application
 {
 
@@ -46,7 +53,9 @@ class Application
 
     public function __construct()
     {
-        require 'request/Request.php';
+        //将函数注册到SPL __autoload函数队列中。如果该队列中的函数尚未激活，则激活它们
+        //autoload 方法不能出现异常信息，否则不会执行其它自动加载，如vendor的composer加载
+        spl_autoload_register([$this, 'autoload'], true, true);
         $this->_body = Request::getBody();
         $this->initRoute();
     }
@@ -64,14 +73,22 @@ class Application
 
     public function run()
     {
-        $this->checkClassExist($this->route);
+        $this->checkRoute($this->route);
         try {
-            $reflectionClass = new ReflectionClass($this->className);
-            $method = $reflectionClass->getMethod($this->methodName);
-            $method->setAccessible(true);
-            $method->invokeArgs(new $this->className(), ['body' => $this->_body]);
+            if (!class_exists($this->className)) {
+                throw new Exception("控制器不存在:[{$this->className}]");
+            }
+            if (!method_exists($this->className, $this->methodName)) {
+                throw new Exception("{$this->methodName}方法不存在:[{$this->className}->{$this->methodName}]");
+            }
+            $controller = new $this->className();
+            call_user_func_array([$controller, $this->methodName], ['body' => $this->_body]);
+//            $reflectionClass = new ReflectionClass($this->className);
+//            $method = $reflectionClass->getMethod($this->methodName);
+//            $method->setAccessible(true);
+//            $method->invokeArgs(new $this->className(), ['body' => $this->_body]);
         } catch (ReflectionException $e) {
-
+            print_r($e);
         }
     }
 
@@ -79,24 +96,33 @@ class Application
      * @param $route
      * @throws Exception
      */
-    private function checkClassExist($route)
+    private function checkRoute($route)
     {
         $routeArr = explode('/', $route);
         $this->moduleName = isset($routeArr[0]) ? strtolower($routeArr[0]) : '';
         $this->className = isset($routeArr[1]) ? ucfirst(strtolower($routeArr[1])) : '';
         $this->methodName = isset($routeArr[2]) ? strtolower($routeArr[2]) : $this->methodName;
         if (empty($this->moduleName) || empty($this->className)) {
-            throw new Exception('Error Route:' . $this->route);
+            throw new Exception("路由错误:[{$this->route}]");
         }
-        $this->classPath = dirname(dirname(__DIR__)) .
-            '/' . strtolower($this->moduleName) .
-            '/' . ucfirst(strtolower($this->className)) . '.php';
-        if (!file_exists($this->classPath)) {
-            throw new Exception('Error Route:' . $this->route);
+        //加上命名空间
+        $this->className = APP_NAME . '\\' . $this->moduleName . '\\' . $this->className;
+    }
+
+    public function autoload($class)
+    {
+        if ($file = $this->findFile($class)) {
+            include $file;
+            return true;
         }
-        require $this->classPath;
-        if (!class_exists($this->className)) {
-            throw new Exception('Error class not exist:' . $this->className);
+    }
+
+    private function findFile($class)
+    {
+        $file = str_replace([APP_NAME, '\\'], [APP_ROOT, DS], $class) . '.php';
+        if (file_exists($file)) {
+            return $file;
         }
+        return null;
     }
 }
