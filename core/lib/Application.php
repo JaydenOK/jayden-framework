@@ -73,8 +73,8 @@ class Application
 
     public function run()
     {
-        $this->checkRoute($this->route);
         try {
+            $this->checkRoute($this->route);
             if (!class_exists($this->className)) {
                 throw new Exception("控制器不存在:[{$this->className}]");
             }
@@ -88,6 +88,8 @@ class Application
 //            $method->setAccessible(true);
 //            $method->invokeArgs(new $this->className(), ['body' => $this->_body]);
         } catch (ReflectionException $e) {
+            print_r($e);
+        } catch (Exception $e) {
             print_r($e);
         }
     }
