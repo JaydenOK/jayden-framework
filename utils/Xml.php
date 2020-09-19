@@ -1,6 +1,6 @@
 <?php
 
-namespace module\utils;
+namespace app\utils;
 
 use SimpleXMLElement;
 

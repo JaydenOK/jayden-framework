@@ -2,14 +2,21 @@
 
 namespace app\core\lib;
 
-use app\core\lib\request\Request;
-use Exception;
+use app\core\lib\exception\Exception;
+use app\core\lib\exception\InvalidParamException;
+use app\core\lib\exception\InvalidValueException;
+use app\core\lib\Request;
+use app\core\lib\traits\Singleton;
 use ReflectionClass;
 use ReflectionException;
 
-class Application
+class App
 {
 
+    /**
+     * @var App $app
+     */
+    public static $app;
     /**
      * 请求路由参数,如 test/validate/show，test/validate（则执行test/validate/run方法）
      * @var string
@@ -49,15 +56,36 @@ class Application
      * @var string
      */
     private $_body;
+    /**
+     * @var Config
+     */
+    private $config;
 
+    public static function getInstance()
+    {
+        if (is_null(static::$app)) {
+            static::$app = new static();
+        }
+        return static::$app;
+    }
 
-    public function __construct()
+    private function __construct($config = [])
     {
         //将函数注册到SPL __autoload函数队列中。如果该队列中的函数尚未激活，则激活它们
         //autoload 方法不能出现异常信息，否则不会执行其它自动加载，如vendor的composer加载
         spl_autoload_register([$this, 'autoload'], true, true);
         $this->_body = Request::getBody();
+        $this->initConfig($config);
         $this->initRoute();
+    }
+
+    private function initConfig(array $config)
+    {
+        $fileConfig = [];
+        if (file_exists(APP_ROOT . '/config/config.php')) {
+            $fileConfig = require APP_ROOT . '/config/config.php';
+        }
+        $this->config = new Config(array_merge($fileConfig, $config));
     }
 
     private function initRoute()
@@ -82,15 +110,18 @@ class Application
                 throw new Exception("{$this->methodName}方法不存在:[{$this->className}->{$this->methodName}]");
             }
             $controller = new $this->className();
-            call_user_func_array([$controller, $this->methodName], ['body' => $this->_body]);
+            $result = call_user_func_array([$controller, $this->methodName], ['body' => $this->_body]);
+            $this->handleResult($result);
 //            $reflectionClass = new ReflectionClass($this->className);
 //            $method = $reflectionClass->getMethod($this->methodName);
 //            $method->setAccessible(true);
 //            $method->invokeArgs(new $this->className(), ['body' => $this->_body]);
-        } catch (ReflectionException $e) {
-            print_r($e);
+        } catch (InvalidParamException $e) {
+            $this->handleException($e);
+        } catch (InvalidValueException $e) {
+            $this->handleException($e);
         } catch (Exception $e) {
-            print_r($e);
+            $this->handleException($e);
         }
     }
 
@@ -111,7 +142,12 @@ class Application
         $this->className = APP_NAME . '\\' . $this->moduleName . '\\' . $this->className;
     }
 
-    public function autoload($class)
+    public function getConfig()
+    {
+        return $this->config;
+    }
+
+    protected function autoload($class)
     {
         if ($file = $this->findFile($class)) {
             include $file;
@@ -125,6 +161,38 @@ class Application
         if (file_exists($file)) {
             return $file;
         }
-        return null;
+        return false;
     }
+
+    private function handleException($e)
+    {
+        if (!DEBUG) {
+            $code = $e->getCode();
+            $output = $this->getOutput($code, $this->translate($code));
+            $this->handleResult($output);
+            exit(0);
+        }
+        print_r($e);
+    }
+
+    private function getOutput(int $code, $message = '')
+    {
+        $output = array(
+            'code' => $code,
+            'message' => $message,
+        );
+        return $output;
+    }
+
+    public function translate($code)
+    {
+        return Language::getMessage($code);
+    }
+
+    private function handleResult($result)
+    {
+        echo json_encode($result, JSON_UNESCAPED_UNICODE);
+        exit(0);
+    }
+
 }

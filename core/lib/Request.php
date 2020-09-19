@@ -1,6 +1,6 @@
 <?php
 
-namespace app\core\lib\request;
+namespace app\core\lib;
 
 /**
  * The 'Request' class is a wrapper for HTTP requests.

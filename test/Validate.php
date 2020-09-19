@@ -2,12 +2,18 @@
 
 namespace app\test;
 
+use app\core\lib\controller\Controller;
 use app\core\lib\request\Request;
 use Rakit\Validation\Helper;
 use Rakit\Validation\Validator;
 
-class Validate
+class Validate extends Controller
 {
+
+    public $rules = [
+        'name' => 'required',
+        'email' => 'required|email',
+    ];
 
     public function run($body)
     {
