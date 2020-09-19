@@ -4,6 +4,7 @@ namespace app\module\utils;
 
 use app\core\lib\App;
 use app\core\lib\exception\Exception;
+use app\core\lib\exception\InvalidValueException;
 
 class ResponseUtil
 {
@@ -39,11 +40,9 @@ class ResponseUtil
      */
     public static function getOutputArrayByCode($code)
     {
-        App::getInstance()->translate();
-        $message = App::t('code/api', $code);
         return [
             'code' => $code,
-            'message' => $message
+            'message' => App::getInstance()->translate($code)
         ];
     }
 
@@ -59,9 +58,9 @@ class ResponseUtil
     }
 
     /**
-     * 以报错的方式在子方法中停止接口异常运行
+     * 自定义报错
      * @param $code
-     * @param string $msg 自定义报错
+     * @param string $msg
      */
     public static function throwInvalidValueExceptionByCode($code, $msg = '')
     {

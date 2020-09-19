@@ -3,6 +3,13 @@
 //引入vendor下的composer加载器
 use app\core\lib\App;
 
+header('Access-Control-Allow-Headers: Origin, Accept, Content-Type, Authorization, ISCORS, createtime, platform, token, accesstoken, relativepath');
+header('Access-Control-Allow-Credentials: true');
+header('Access-Control-Allow-Methods: POST, GET, PUT, OPTIONS, DELETE');
+if (isset($_SERVER['HTTP_ORIGIN'])) {
+    header('Access-Control-Allow-Origin: ' . $_SERVER['HTTP_ORIGIN']);
+}
+
 require __DIR__ . '/vendor/autoload.php';
 require __DIR__ . '/core/function/functions.php';
 require __DIR__ . '/core/lib/App.php';

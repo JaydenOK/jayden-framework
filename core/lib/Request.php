@@ -35,6 +35,10 @@ class Request
      * @var array
      */
     protected static $input = array();
+    /**
+     * @var array
+     */
+    protected static $formatInput = array();
 
     /**
      * An array of media type formats.
@@ -837,7 +841,7 @@ class Request
     }
 
     /**
-     * 获取请求数据
+     *
      * @return array
      */
     public static function getBody()
@@ -848,9 +852,33 @@ class Request
         return static::$input = (array)$_GET + (array)$_POST + $input;
     }
 
+    /**
+     * 获取请求头
+     * @return array|false
+     */
+    public static function getHeaders()
+    {
+        $headers = [];
+        if (function_exists('getallheaders')) {
+            $headers = getallheaders();
+        } elseif (function_exists('http_get_request_headers')) {
+            $headers = http_get_request_headers();
+        } else {
+            foreach ($_SERVER as $name => $value) {
+                if (strncmp($name, 'HTTP_', 5) === 0) {
+                    $name = str_replace(' ', '-', ucwords(strtolower(str_replace('_', ' ', substr($name, 5)))));
+                    $headers[$name] = $value;
+                }
+            }
+        }
+        return $headers;
+    }
+
     public static function getBodyArray()
     {
-        return json_decode(static::body(), true);
+        if (!empty(static::$formatInput)) return static::$formatInput;
+        $body = json_decode(static::body(), true);
+        return static::$formatInput = (array)$_GET + (array)$_POST + (array)$body;
     }
 
 }

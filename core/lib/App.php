@@ -53,6 +53,11 @@ class App
      */
     private $methodName = 'run';
     /**
+     * 控制器后缀名称
+     * @var string
+     */
+    private $controllerSuffix = 'Controller';
+    /**
      * @var string
      */
     private $_body;
@@ -74,7 +79,9 @@ class App
         //将函数注册到SPL __autoload函数队列中。如果该队列中的函数尚未激活，则激活它们
         //autoload 方法不能出现异常信息，否则不会执行其它自动加载，如vendor的composer加载
         spl_autoload_register([$this, 'autoload'], true, true);
-        $this->_body = Request::getBody();
+        $this->request = new Request();
+        $this->response = new Response();
+        $this->_body = $this->getBody();
         $this->initConfig($config);
         $this->initRoute();
     }
@@ -139,7 +146,7 @@ class App
             throw new Exception("路由错误:[{$this->route}]");
         }
         //加上命名空间
-        $this->className = APP_NAME . '\\' . $this->moduleName . '\\' . $this->className;
+        $this->className = APP_NAME . '\\' . $this->moduleName . '\\' . $this->className . $this->controllerSuffix;
     }
 
     public function getConfig()
@@ -162,6 +169,12 @@ class App
             return $file;
         }
         return false;
+    }
+
+    public function getBody()
+    {
+        if (!is_null($this->_body)) return $this->_body;
+        return $this->_body = $this->request->getBodyArray();
     }
 
     private function handleException($e)
@@ -189,10 +202,12 @@ class App
         return Language::getMessage($code);
     }
 
-    private function handleResult($result)
+    public function handleResult($result)
     {
-        echo json_encode($result, JSON_UNESCAPED_UNICODE);
+        header('Content-Type: application/json');
+        if (!is_null($result)) {
+            echo json_encode($result, JSON_UNESCAPED_UNICODE);
+        }
         exit(0);
     }
-
 }
