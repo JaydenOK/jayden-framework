@@ -18,7 +18,7 @@ run  方法名
 ## 
 方法入口，获取请求数据可从Request::getBody(), 或注入run($body)获取  
 访问路由：  
-http://utils.cc/index.php?route=test/validate/run  
+http://utils.cc/index.php?route=api/user/add  
 
 
 
