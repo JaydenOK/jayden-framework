@@ -8,6 +8,7 @@ namespace app\language;
  */
 class Api
 {
+    const SYSTEM_EXCEPTION = -1;
     const SUCCESS = 0;
     const SYSTEM_BUSY = 9999;
     const PARAM_ERROR = 1;

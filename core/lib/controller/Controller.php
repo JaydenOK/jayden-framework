@@ -25,7 +25,7 @@ class Controller
     /**
      * @var App
      */
-    private $app;
+    protected $app;
 
     public function __construct()
     {

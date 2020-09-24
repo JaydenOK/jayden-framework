@@ -6,6 +6,7 @@
 use app\language\Api;
 
 return [
+    Api::SYSTEM_EXCEPTION => '系统异常',
     Api::SUCCESS => '成功',
     Api::SYSTEM_BUSY => '系统繁忙',
     Api::PARAM_ERROR => '参数错误',

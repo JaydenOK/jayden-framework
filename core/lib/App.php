@@ -18,40 +18,29 @@ class App
      */
     public static $app;
     /**
-     * 请求路由参数,如 test/validate/show，test/validate（则执行test/validate/run方法）
+     * 请求路由参数,如 api/user/add，api/user（则执行api/user/run方法）
      * @var string
      */
     protected $route;
     /**
-     * 类所在路径
-     * @var
-     */
-    private $classPath;
-    /**
-     * 请求参数
-     * @var
-     */
-    private $_queryParams;
-    /**
-     * 请求方法
-     * @var string
-     */
-    private $_method;
-    /**
      * 模块（即目录名）
      * @var string
      */
-    private $moduleName;
+    private $module;
     /**
-     * 控制器，有且只有第一个大写字母
+     * @var string
+     */
+    private $controller;
+    /**
+     * 方法，默认执行run方法
+     * @var string
+     */
+    private $action = 'run';
+    /**
+     * 控制器所在空间，有且只有第一个大写字母
      * @var
      */
     private $className;
-    /**
-     * 方法，默认执行run方法
-     * @var bool
-     */
-    private $methodName = 'run';
     /**
      * 控制器后缀名称
      * @var string
@@ -113,11 +102,11 @@ class App
             if (!class_exists($this->className)) {
                 throw new Exception("控制器不存在:[{$this->className}]");
             }
-            if (!method_exists($this->className, $this->methodName)) {
-                throw new Exception("{$this->methodName}方法不存在:[{$this->className}->{$this->methodName}]");
+            if (!method_exists($this->className, $this->action)) {
+                throw new Exception("{$this->action}方法不存在:[{$this->className}->{$this->action}]");
             }
             $controller = new $this->className();
-            $result = call_user_func_array([$controller, $this->methodName], ['body' => $this->_body]);
+            $result = call_user_func_array([$controller, $this->action], ['body' => $this->_body]);
             $this->handleResult($result);
 //            $reflectionClass = new ReflectionClass($this->className);
 //            $method = $reflectionClass->getMethod($this->methodName);
@@ -139,14 +128,14 @@ class App
     private function checkRoute($route)
     {
         $routeArr = explode('/', $route);
-        $this->moduleName = isset($routeArr[0]) ? strtolower($routeArr[0]) : '';
-        $this->className = isset($routeArr[1]) ? ucfirst(strtolower($routeArr[1])) : '';
-        $this->methodName = isset($routeArr[2]) ? strtolower($routeArr[2]) : $this->methodName;
-        if (empty($this->moduleName) || empty($this->className)) {
+        $this->module = isset($routeArr[0]) ? strtolower($routeArr[0]) : '';
+        $this->controller = isset($routeArr[1]) ? ucfirst(strtolower($routeArr[1])) . $this->controllerSuffix : '';
+        $this->action = isset($routeArr[2]) ? strtolower($routeArr[2]) : $this->action;
+        if (empty($this->module) || empty($this->controller)) {
             throw new Exception("路由错误:[{$this->route}]");
         }
         //加上命名空间
-        $this->className = APP_NAME . '\\' . $this->moduleName . '\\' . $this->className . $this->controllerSuffix;
+        $this->className = APP_NAME . '\\' . $this->module . '\\' . $this->controller;
     }
 
     public function getConfig()
@@ -177,11 +166,40 @@ class App
         return $this->_body = $this->request->getBodyArray();
     }
 
+    /**
+     * @return string
+     */
+    public function getModule(): string
+    {
+        return $this->module;
+    }
+
+    /**
+     * @return string
+     */
+    public function getController(): string
+    {
+        return $this->controller;
+    }
+
+    /**
+     * @return string
+     */
+    public function getAction(): string
+    {
+        return $this->action;
+    }
+
     private function handleException($e)
     {
         if (!DEBUG) {
-            $code = $e->getCode();
-            $output = $this->getOutput($code, $this->translate($code));
+            //生产环境输出
+            if ($e instanceof Exception) {
+                $output = $this->getOutput(-1, $e->getMessage());
+            } else {
+                $code = $e->getCode();
+                $output = $this->getOutput($code, $this->translate($code));
+            }
             $this->handleResult($output);
             exit(0);
         }
@@ -202,8 +220,19 @@ class App
         return Language::getMessage($code);
     }
 
+    protected function commonHeader()
+    {
+        header('Access-Control-Allow-Headers: Origin, Accept, Content-Type, Authorization, ISCORS, createtime, platform, token, accesstoken, relativepath');
+        header('Access-Control-Allow-Credentials: true');
+        header('Access-Control-Allow-Methods: POST, GET, PUT, OPTIONS, DELETE');
+        if (isset($_SERVER['HTTP_ORIGIN'])) {
+            header('Access-Control-Allow-Origin: ' . $_SERVER['HTTP_ORIGIN']);
+        }
+    }
+
     public function handleResult($result)
     {
+        $this->commonHeader();
         header('Content-Type: application/json');
         if (!is_null($result)) {
             echo json_encode($result, JSON_UNESCAPED_UNICODE);
