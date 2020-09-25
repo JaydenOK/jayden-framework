@@ -37,6 +37,7 @@ class ErrorBag
     }
 
     /**
+     * 获取验证错误的messages数组条数
      * Get messages count
      *
      * @return int

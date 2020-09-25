@@ -9,7 +9,9 @@ class Validator
     /** @var array */
     protected $translations = [];
 
-    /** @var array */
+    /**
+     * @var Rule[]
+     */
     protected $validators = [];
 
     /** @var bool */
@@ -31,6 +33,7 @@ class Validator
     }
 
     /**
+     * 注册验证器
      * Register or override existing validator
      *
      * @param mixed $key
@@ -44,6 +47,7 @@ class Validator
     }
 
     /**
+     * 根据校验键获取真实的验证规则器 Rule
      * Get validator object from given $key
      *
      * @param mixed $key
@@ -70,6 +74,7 @@ class Validator
     }
 
     /**
+     * 通过校验数据、校验规则、验证提示，创建验证类Validation单例
      * Given $inputs, $rules and $messages to make the Validation class instance
      *
      * @param array $inputs
@@ -87,15 +92,17 @@ class Validator
     }
 
     /**
+     * call_user_func_array($object, $params) 当尝试以调用函数的方式调用一个对象时，该对象的__invoke() 方法会被自动调用。
      * Magic invoke method to make Rule instance
      *
-     * @param string $rule
+     * @param string $rule 如： ['uploaded_file', '0,500K,png,jpeg']
      * @return Rule
      * @throws RuleNotFoundException
      */
     public function __invoke(string $rule): Rule
     {
         $args = func_get_args();
+        //删除数组中的第一个规则元素，并返回被删除的元素：
         $rule = array_shift($args);
         $params = $args;
         $validator = $this->getValidator($rule);
@@ -106,6 +113,7 @@ class Validator
          * @var $clonedValidator Rule
          */
         $clonedValidator = clone $validator;
+        //其余参数传入填充
         $clonedValidator->fillParameters($params);
 
         return $clonedValidator;
@@ -119,51 +127,51 @@ class Validator
     protected function registerBaseValidators()
     {
         $baseValidator = [
-            'required'                  => new Rules\Required,
-            'required_if'               => new Rules\RequiredIf,
-            'required_unless'           => new Rules\RequiredUnless,
-            'required_with'             => new Rules\RequiredWith,
-            'required_without'          => new Rules\RequiredWithout,
-            'required_with_all'         => new Rules\RequiredWithAll,
-            'required_without_all'      => new Rules\RequiredWithoutAll,
-            'email'                     => new Rules\Email,
-            'alpha'                     => new Rules\Alpha,
-            'numeric'                   => new Rules\Numeric,
-            'alpha_num'                 => new Rules\AlphaNum,
-            'alpha_dash'                => new Rules\AlphaDash,
-            'alpha_spaces'              => new Rules\AlphaSpaces,
-            'in'                        => new Rules\In,
-            'not_in'                    => new Rules\NotIn,
-            'min'                       => new Rules\Min,
-            'max'                       => new Rules\Max,
-            'between'                   => new Rules\Between,
-            'url'                       => new Rules\Url,
-            'integer'                   => new Rules\Integer,
-            'boolean'                   => new Rules\Boolean,
-            'ip'                        => new Rules\Ip,
-            'ipv4'                      => new Rules\Ipv4,
-            'ipv6'                      => new Rules\Ipv6,
-            'extension'                 => new Rules\Extension,
-            'array'                     => new Rules\TypeArray,
-            'same'                      => new Rules\Same,
-            'regex'                     => new Rules\Regex,
-            'date'                      => new Rules\Date,
-            'accepted'                  => new Rules\Accepted,
-            'present'                   => new Rules\Present,
-            'different'                 => new Rules\Different,
-            'uploaded_file'             => new Rules\UploadedFile,
-            'mimes'                     => new Rules\Mimes,
-            'callback'                  => new Rules\Callback,
-            'before'                    => new Rules\Before,
-            'after'                     => new Rules\After,
-            'lowercase'                 => new Rules\Lowercase,
-            'uppercase'                 => new Rules\Uppercase,
-            'json'                      => new Rules\Json,
-            'digits'                    => new Rules\Digits,
-            'digits_between'            => new Rules\DigitsBetween,
-            'defaults'                  => new Rules\Defaults,
-            'default'                   => new Rules\Defaults, // alias of defaults
-            'nullable'                  => new Rules\Nullable,
+            'required' => new Rules\Required,
+            'required_if' => new Rules\RequiredIf,
+            'required_unless' => new Rules\RequiredUnless,
+            'required_with' => new Rules\RequiredWith,
+            'required_without' => new Rules\RequiredWithout,
+            'required_with_all' => new Rules\RequiredWithAll,
+            'required_without_all' => new Rules\RequiredWithoutAll,
+            'email' => new Rules\Email,
+            'alpha' => new Rules\Alpha,
+            'numeric' => new Rules\Numeric,
+            'alpha_num' => new Rules\AlphaNum,
+            'alpha_dash' => new Rules\AlphaDash,
+            'alpha_spaces' => new Rules\AlphaSpaces,
+            'in' => new Rules\In,
+            'not_in' => new Rules\NotIn,
+            'min' => new Rules\Min,
+            'max' => new Rules\Max,
+            'between' => new Rules\Between,
+            'url' => new Rules\Url,
+            'integer' => new Rules\Integer,
+            'boolean' => new Rules\Boolean,
+            'ip' => new Rules\Ip,
+            'ipv4' => new Rules\Ipv4,
+            'ipv6' => new Rules\Ipv6,
+            'extension' => new Rules\Extension,
+            'array' => new Rules\TypeArray,
+            'same' => new Rules\Same,
+            'regex' => new Rules\Regex,
+            'date' => new Rules\Date,
+            'accepted' => new Rules\Accepted,
+            'present' => new Rules\Present,
+            'different' => new Rules\Different,
+            'uploaded_file' => new Rules\UploadedFile,
+            'mimes' => new Rules\Mimes,
+            'callback' => new Rules\Callback,
+            'before' => new Rules\Before,
+            'after' => new Rules\After,
+            'lowercase' => new Rules\Lowercase,
+            'uppercase' => new Rules\Uppercase,
+            'json' => new Rules\Json,
+            'digits' => new Rules\Digits,
+            'digits_between' => new Rules\DigitsBetween,
+            'defaults' => new Rules\Defaults,
+            'default' => new Rules\Defaults, // alias of defaults
+            'nullable' => new Rules\Nullable,
         ];
 
         foreach ($baseValidator as $key => $validator) {

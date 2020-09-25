@@ -17,7 +17,10 @@ class Validation
     /** @var array */
     protected $inputs = [];
 
-    /** @var array */
+    /**
+     * 有多少个请求参数需要验证就有多少个属性信息
+     * @var Attribute[]
+     */
     protected $attributes = [];
 
     /** @var array */
@@ -32,7 +35,9 @@ class Validation
     /** @var array */
     protected $invalidData = [];
 
-    /** @var ErrorBag */
+    /**
+     * @var ErrorBag
+     */
     public $errors;
 
     /**
@@ -63,12 +68,16 @@ class Validation
     /**
      * Add attribute rules
      *
-     * @param string $attributeKey
-     * @param string|array $rules
+     * @param string $attributeKey avatar
+     * @param string|array $rules 单个字段要检验的规则，可数字或|号分割的字符串 required|uploaded_file:0,500K,png,jpeg
      * @return void
      */
     public function addAttribute(string $attributeKey, $rules)
     {
+        /**
+         * 保存将规则解析成每个具体的规则类
+         * @var $resolvedRules Rule[]
+         */
         $resolvedRules = $this->resolveRules($rules);
         $attribute = new Attribute($this, $attributeKey, $this->getAlias($attributeKey), $resolvedRules);
         $this->attributes[$attributeKey] = $attribute;
@@ -93,18 +102,19 @@ class Validation
      */
     public function validate(array $inputs = [])
     {
-        $this->errors = new ErrorBag; // reset error bag
+        $this->errors = new ErrorBag(); // reset error bag
         $this->inputs = array_merge($this->inputs, $this->resolveInputAttributes($inputs));
 
         // Before validation hooks
         foreach ($this->attributes as $attributeKey => $attribute) {
             foreach ($attribute->getRules() as $rule) {
+                //$rule为继承了Rule的不同类，但不一定实现了 BeforeValidate
+                //BeforeValidate 为接口类，$rule有实现此接口的(instanceof)，执行接口方法
                 if ($rule instanceof BeforeValidate) {
                     $rule->beforeValidate();
                 }
             }
         }
-
         foreach ($this->attributes as $attributeKey => $attribute) {
             $this->validateAttribute($attribute);
         }
@@ -154,7 +164,7 @@ class Validation
                 $value = $ruleValidator->modifyValue($value);
                 $isEmptyValue = $this->isEmptyValue($value);
             }
-
+            //执行验证数据主方法
             $valid = $ruleValidator->check($value);
 
             if ($isEmptyValue and $this->ruleIsOptional($attribute, $ruleValidator)) {
@@ -162,6 +172,7 @@ class Validation
             }
 
             if (!$valid) {
+                //校验失败，填充error信息
                 $isValid = false;
                 $this->addError($attribute, $value, $ruleValidator);
                 if ($ruleValidator->isImplicit()) {
@@ -382,7 +393,7 @@ class Validation
 
     /**
      * Resolve message
-     *
+     * 解析校验错误提示信息
      * @param \Rakit\Validation\Attribute $attribute
      * @param mixed $value
      * @param \Rakit\Validation\Rule $validator
@@ -469,21 +480,23 @@ class Validation
     }
 
     /**
+     * 解析规则，返回保存
      * Resolve $rules
      *
-     * @param mixed $rules
+     * @param mixed $rules =传入单个字段的校验规则: 'required|uploaded_file:0,500K,png,jpeg';
      * @return array
      */
     protected function resolveRules($rules): array
     {
+        //传入的单个字段rule值:
         if (is_string($rules)) {
+            //分割|每个rule
             $rules = explode('|', $rules);
         }
 
         $resolvedRules = [];
         $validatorFactory = $this->getValidator();
-
-        // $rules = array (0 => 'numeric', 1 => 'max:2',);
+        //$rules = array (0 => 'required',1 => 'uploaded_file:0,500K,png,jpeg',     )
         foreach ($rules as $i => $rule) {
             if (empty($rule)) {
                 continue;
@@ -492,7 +505,10 @@ class Validation
 
             if (is_string($rule)) {
                 //解析规则名$rulename，规格:号的其它参数
+                //$rulename= 'uploaded_file'
+                //$params = ['0,500K,png,jpeg'];  $params 里边只会有一个字符型的元素
                 list($rulename, $params) = $this->parseRule($rule);
+                //call_user_func_array当尝试以调用函数的方式调用一个对象时，该对象的__invoke() 方法会被自动调用。
                 $validator = call_user_func_array($validatorFactory, array_merge([$rulename], $params));
             } elseif ($rule instanceof Rule) {
                 $validator = $rule;
@@ -513,16 +529,19 @@ class Validation
     /**
      * Parse $rule
      *
-     * @param string $rule
+     * @param string $rule =  uploaded_file:0,500K,png,jpeg
      * @return array
      */
     protected function parseRule(string $rule): array
     {
+        //返回最多2个元素，即分割一次:号
         $exp = explode(':', $rule, 2);
         $rulename = $exp[0];
         if ($rulename !== 'regex') {
+            //不是正则的匹配，在根据逗号分割规则
             $params = isset($exp[1]) ? explode(',', $exp[1]) : [];
         } else {
+            //是正则，直接返回第二个开始字符
             $params = [$exp[1]];
         }
 
@@ -628,6 +647,7 @@ class Validation
     }
 
     /**
+     * 解析请求参数键值，带:号的，增加保存在aliases属性
      * Given $inputs and resolve input attributes
      *
      * @param array $inputs

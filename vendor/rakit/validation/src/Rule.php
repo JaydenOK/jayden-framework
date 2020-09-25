@@ -121,9 +121,10 @@ abstract class Rule
     }
 
     /**
+     * 传入参数，子类具体Rule可重写此方法，实现不同的参数填充
      * Fill $params to $this->params
      *
-     * @param array $params
+     * @param array $params = ['uploaded_file', '0,500K,png,jpeg']
      * @return \Rakit\Validation\Rule
      */
     public function fillParameters(array $params): Rule

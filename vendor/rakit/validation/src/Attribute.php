@@ -32,10 +32,10 @@ class Attribute
     /**
      * Constructor
      *
-     * @param \Rakit\Validation\Validation  $validation
-     * @param string      $key
+     * @param \Rakit\Validation\Validation $validation
+     * @param string $key
      * @param string|null $alias
-     * @param array       $rules
+     * @param array $rules
      * @return void
      */
     public function __construct(
@@ -43,7 +43,8 @@ class Attribute
         string $key,
         $alias = null,
         array $rules = []
-    ) {
+    )
+    {
         $this->validation = $validation;
         $this->alias = $alias;
         $this->key = $key;
@@ -121,7 +122,8 @@ class Attribute
 
     /**
      * Add rule
-     *
+     * 对各个要验证的Rule规则类，注入当前属性Attribute及当前Validation
+     * 当前attribute也注册各个要验证的规则类Rule
      * @param \Rakit\Validation\Rule $rule
      * @return void
      */
@@ -140,7 +142,7 @@ class Attribute
      */
     public function getRule(string $ruleKey)
     {
-        return $this->hasRule($ruleKey)? $this->rules[$ruleKey] : null;
+        return $this->hasRule($ruleKey) ? $this->rules[$ruleKey] : null;
     }
 
     /**
