@@ -11,6 +11,10 @@ class Autoloader
 
     static protected $_Instance;
 
+    /**
+     * 单例
+     * @return Autoloader
+     */
     static public function getInstance()
     {
         if (!self::$_Instance) {
@@ -20,12 +24,17 @@ class Autoloader
         return self::$_Instance;
     }
 
+    /**
+     * 封装,禁止外部new
+     * Autoloader constructor.
+     */
     protected function __construct()
     {
 
     }
 
     /**
+     * 保留注册的命名空间与目录的映射
      * An associative array where the key is a namespace prefix and the value
      * is an array of base directories for classes in that namespace.
      *
@@ -34,6 +43,7 @@ class Autoloader
     protected $prefixes = array();
 
     /**
+     * 注册loadClass，new 带命名空间的对象时，执行loadClass
      * Register loader with SPL autoloader stack.
      *
      * @return void
@@ -44,12 +54,13 @@ class Autoloader
     }
 
     /**
+     * 添加命名空间与目录的映射
      * Adds a base directory for a namespace prefix.
      *
      * @param string $prefix The namespace prefix.
      * @param string $base_dir A base directory for class files in the
      * namespace.
-     * @param bool $prepend If true, prepend the base directory to the stack
+     * @param bool $prepend If true, prepend the base directory to the stack  是否加到最前面，循环查找时，从前往后查找
      * instead of appending it; this causes it to be searched first rather
      * than last.
      * @return void
@@ -77,6 +88,9 @@ class Autoloader
     }
 
     /**
+     * 加载new的对象，完整的带顶级命名空间对象
+     * 从最后分隔符\分割数组保存为 $prefix, $relative_class，一直往前分割\，查找，找到$prefix在$this->prefixes 注册的命名空间
+     * 将文件引入：loadMappedFile
      * Loads the class file for a given class name.
      *
      * @param string $class The fully-qualified class name.
@@ -114,6 +128,7 @@ class Autoloader
     }
 
     /**
+     * 存在$prefix定义空间, 执行require引入文件
      * Load the mapped file for a namespace prefix and relative class.
      *
      * @param string $prefix The namespace prefix.
@@ -135,9 +150,6 @@ class Autoloader
             // replace namespace separators with directory separators
             // in the relative class name, append with .php
             $file = $base_dir
-                . str_replace('\\', DIRECTORY_SEPARATOR, $relative_class)
-                . '.php';
-            $file = $base_dir
                 . str_replace('\\', '/', $relative_class)
                 . '.php';
 
@@ -153,6 +165,7 @@ class Autoloader
     }
 
     /**
+     * require 引入文件
      * If a file exists, require it from the file system.
      *
      * @param string $file The file to require.
