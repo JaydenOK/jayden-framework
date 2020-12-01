@@ -83,6 +83,7 @@ class DB
 }
 
 /////////////////////   interface接口模式使用（切面增加功能）
+$attribute = new Rakit\Validation\Attribute();
 foreach ($attribute->getRules() as $rule) {
     //$rule为继承了Rule的不同类，但不一定实现了 BeforeValidate
     //BeforeValidate 为接口类，$rule有实现此接口的(instanceof)，执行接口方法
