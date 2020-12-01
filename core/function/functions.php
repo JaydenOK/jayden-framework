@@ -1947,3 +1947,54 @@ function getColumnGroupByField($array, $field, $column = '', $isMultiple = false
     arsort($data);
     return $data;
 }
+
+/**
+ * socket异步请求
+ * @param $url
+ * @param mixed $data
+ * @param string $method
+ * @param bool $getResponse
+ * @param string $responseData
+ * @return bool
+ */
+function asyncRequest($url, $data = [], $method = 'GET', $getResponse = false, &$responseData = '')
+{
+    $method = strtoupper($method);
+    if (!in_array($method, ['GET', 'POST'])) {
+        exit('Invalid Method:' . $method);
+    }
+    $target = parse_url($url);
+    $port = isset($target['port']) ? $target['port'] : 80;
+    if (!$fp = @fsockopen($target['host'], $port, $errno, $errstr, 5)) {
+        exit('Fail To Connect ' . $url . ": $errstr [$errno]");
+    }
+    stream_set_blocking($fp, false);
+    $path = isset($target['path']) ? $target['path'] : $url;
+    if (!empty($target['query'])) {
+        $path .= '?' . $target['query'];
+    }
+    if (is_array($data)) {
+        $data = http_build_query($data);
+    }
+    if ($method == 'POST') {
+        fputs($fp, "{$method} " . $path . " HTTP/1.0\r\n");
+        fputs($fp, "Content-type: application/x-www-form-urlencoded\r\n");
+        fputs($fp, 'Content-length: ' . strlen($data) . "\r\n");
+        fputs($fp, "Connection: close\r\n\r\n");
+        fputs($fp, $data);
+    } else {
+        if (!empty($data)) {
+            $path .= (strpos($path, '?') !== false) ? '&' . $data : '?' . $data;
+        }
+        fputs($fp, "{$method} " . $path . " HTTP/1.0\r\n");
+        fputs($fp, "Connection: close\r\n\r\n");
+    }
+    if ($getResponse) {
+        $responseData = '';
+        while (!feof($fp)) {
+            $responseData .= fgets($fp, 128);
+        }
+    }
+    @fclose($fp);
+    return true;
+}
