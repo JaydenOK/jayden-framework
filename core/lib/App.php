@@ -169,7 +169,7 @@ class App
     /**
      * @return string
      */
-    public function getModule(): string
+    public function getModule()
     {
         return $this->module;
     }
@@ -177,7 +177,7 @@ class App
     /**
      * @return string
      */
-    public function getController(): string
+    public function getController()
     {
         return $this->controller;
     }
@@ -185,7 +185,7 @@ class App
     /**
      * @return string
      */
-    public function getAction(): string
+    public function getAction()
     {
         return $this->action;
     }

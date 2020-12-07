@@ -16,7 +16,7 @@ class Config
         $this->config = $prefix ? [$prefix => $config] : $config;
     }
 
-    public function set(string $key, $value): bool
+    public function set(string $key, $value)
     {
         $config = &$this->config;
 
@@ -43,7 +43,7 @@ class Config
         return $config;
     }
 
-    public function has(string $key): bool
+    public function has(string $key)
     {
         $config = $this->config;
 
@@ -57,7 +57,7 @@ class Config
         return true;
     }
 
-    public function append(string $key, $value): bool
+    public function append(string $key, $value)
     {
         $config = &$this->config;
 
@@ -74,7 +74,7 @@ class Config
         return true;
     }
 
-    public function prepend(string $key, $value): bool
+    public function prepend(string $key, $value)
     {
         $config = &$this->config;
 
@@ -91,7 +91,8 @@ class Config
         return true;
     }
 
-    public function unset(string $key): bool
+    //PHP7可用 unset函数名
+    public function unsetConfig(string $key)
     {
         if (!$this->has($key)) {
             return false;
@@ -100,7 +101,7 @@ class Config
         return $this->set($key, null);
     }
 
-    public function toArray(): array
+    public function toArray()
     {
         return $this->config;
     }
