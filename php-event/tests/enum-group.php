@@ -1,4 +1,8 @@
 <?php
+/**
+ * 触发一个监听者多个方法
+ * 通过实现接口EventSubscriberInterface 的 getSubscribedEvents方法配置处理方法
+ */
 
 use module\lib\EventInterface;
 use module\lib\EventManager;
@@ -45,12 +49,13 @@ $em = new EventManager();
 // register a group listener
 $em->addListener(new EnumGroupListener());
 
-$demo = new class
+class EnumGroup
 {
     use EventManagerAwareTrait;
 
     public function run()
     {
+        //可触发多个方法
         $this->eventManager->trigger(EnumGroupListener::TEST_EVENT);
 
         echo '.';
@@ -59,8 +64,9 @@ $demo = new class
 
         $this->eventManager->trigger(EnumGroupListener::POST_EVENT);
     }
-};
+}
 
+$demo = new EnumGroup();
 $demo->setEventManager($em);
 $demo->run();
 
