@@ -1,12 +1,14 @@
 
-#### Jayden-Framework 框架 
+## Jayden-Framework 框架  
 
-项目Jayden-Framework即为app应用目录:  
+`（注意：一般目录下带有bootstrap.php文件的为独立于框架的用例模块）  `
+
+项目jayden-framework即为app应用根目录，命名空间根目录app:    
 
 app架构遵循:应用-模块-控制器-方法结构  
 ```
-john-utils/api/UserController.php  
-john-utils(app) 应用目录  
+jayden-framework/api/UserController.php  
+jayden-framework(app) 应用目录  
 api   模块      
 api - UserController  控制器    
 api - UserController - add 添加方法
@@ -22,7 +24,7 @@ vendor  第三方扩展目录
 action方法内部获取请求数据，使用$this->body或注入run($body)获取  
 访问路由：  
 ```
-http://jayden.cc/index.php?route=api/user/add  
+http://jayden.cc/index.php?r=api/user/add  
 ```
 
 ##########################################################  

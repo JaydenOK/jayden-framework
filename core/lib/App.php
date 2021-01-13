@@ -84,12 +84,21 @@ class App
         $this->config = new Config(array_merge($fileConfig, $config));
     }
 
+    /**
+     * 初始化路由参数
+     * 兼容路由参数【route或r】
+     */
     private function initRoute()
     {
         if (!isset($this->_body['route']) || empty($this->_body['route']) || !is_string($this->_body['route'])) {
-            // welcome
-            echo 'Hi, john-utils!';
-            exit(0);
+            if (isset($this->_body['r']) && !empty($this->_body['r']) && is_string($this->_body['r'])) {
+                $this->_body['route'] = $this->_body['r'];
+                unset($this->_body['r']);
+            } else {
+                // welcome
+                echo 'Hi , Jayden-Framework !';
+                exit(0);
+            }
         }
         $this->route = $this->_body['route'];
         unset($this->_body['route']);
@@ -122,6 +131,8 @@ class App
     }
 
     /**
+     * 检查路由，自动转换控制器名称第一个字符为大写，方法名第一个小写
+     * http://jayden-framework.cc?route=Api/DiTest/test
      * @param $route
      * @throws Exception
      */
@@ -129,8 +140,8 @@ class App
     {
         $routeArr = explode('/', $route);
         $this->module = isset($routeArr[0]) ? strtolower($routeArr[0]) : '';
-        $this->controller = isset($routeArr[1]) ? ucfirst(strtolower($routeArr[1])) . $this->controllerSuffix : '';
-        $this->action = isset($routeArr[2]) ? strtolower($routeArr[2]) : $this->action;
+        $this->controller = isset($routeArr[1]) ? ucfirst($routeArr[1]) . $this->controllerSuffix : '';
+        $this->action = isset($routeArr[2]) ? $routeArr[2] : $this->action;
         if (empty($this->module) || empty($this->controller)) {
             throw new Exception("路由错误:[{$this->route}]");
         }
@@ -206,6 +217,11 @@ class App
         print_r($e);
     }
 
+    /**
+     * @param int $code
+     * @param string $message
+     * @return array
+     */
     private function getOutput(int $code, $message = '')
     {
         $output = array(
@@ -215,6 +231,10 @@ class App
         return $output;
     }
 
+    /**
+     * @param $code
+     * @return array|mixed|null
+     */
     public function translate($code)
     {
         return Language::getMessage($code);
@@ -230,6 +250,9 @@ class App
         }
     }
 
+    /**
+     * @param $result
+     */
     public function handleResult($result)
     {
         $this->commonHeader();
