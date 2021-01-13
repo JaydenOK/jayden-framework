@@ -1,7 +1,7 @@
 
-#### john-utils框架 
+#### Jayden-Framework 框架 
 
-项目john-utils即为app应用目录:  
+项目Jayden-Framework即为app应用目录:  
 
 app架构遵循:应用-模块-控制器-方法结构  
 ```
@@ -22,7 +22,7 @@ vendor  第三方扩展目录
 action方法内部获取请求数据，使用$this->body或注入run($body)获取  
 访问路由：  
 ```
-http://utils.cc/index.php?route=api/user/add  
+http://jayden.cc/index.php?route=api/user/add  
 ```
 
 ##########################################################  
