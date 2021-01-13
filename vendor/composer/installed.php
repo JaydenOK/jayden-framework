@@ -6,11 +6,20 @@
     'aliases' => 
     array (
     ),
-    'reference' => '0d2bab1ee2633f8b21eb31926d2214aa8189387a',
+    'reference' => '5838fb8925ace6921e80379473fdeb1bb2b382f0',
     'name' => 'john12321/john-utils',
   ),
   'versions' => 
   array (
+    'cekta/di' => 
+    array (
+      'pretty_version' => 'v0.2.1',
+      'version' => '0.2.1.0',
+      'aliases' => 
+      array (
+      ),
+      'reference' => '53c114914e3c9197ff51c6f1e13e086fb88f5c28',
+    ),
     'john12321/john-utils' => 
     array (
       'pretty_version' => 'dev-master',
@@ -18,7 +27,7 @@
       'aliases' => 
       array (
       ),
-      'reference' => '0d2bab1ee2633f8b21eb31926d2214aa8189387a',
+      'reference' => '5838fb8925ace6921e80379473fdeb1bb2b382f0',
     ),
     'opis/closure' => 
     array (
@@ -56,6 +65,15 @@
       ),
       'reference' => '66daff34cbd2627740ffec9469ffbac9f8c8185c',
     ),
+    'psr/cache' => 
+    array (
+      'pretty_version' => '1.0.1',
+      'version' => '1.0.1.0',
+      'aliases' => 
+      array (
+      ),
+      'reference' => 'd11b50ad223250cf17b86e38383413f5a6764bf8',
+    ),
     'psr/container' => 
     array (
       'pretty_version' => '1.0.0',
@@ -71,6 +89,15 @@
       array (
         0 => '^1.0',
       ),
+    ),
+    'psr/simple-cache' => 
+    array (
+      'pretty_version' => '1.0.1',
+      'version' => '1.0.1.0',
+      'aliases' => 
+      array (
+      ),
+      'reference' => '408d5eafb83c57f6365a3ca330ff23aa4a5fa39b',
     ),
     'rakit/validation' => 
     array (

@@ -14,6 +14,7 @@
     "ext-json": "*",
     "ext-bcmath": "*",
     "rakit/validation": "^1.4",
-    "php-di/php-di": "^6.3"
+    "php-di/php-di": "^6.3",
+    "cekta/di": "^0.2.1"
   }
 }

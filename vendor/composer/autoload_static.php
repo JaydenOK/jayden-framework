@@ -18,7 +18,9 @@ class ComposerStaticInit65047e9e09f9201109fb40869ae250a3
         ),
         'P' => 
         array (
+            'Psr\\SimpleCache\\' => 16,
             'Psr\\Container\\' => 14,
+            'Psr\\Cache\\' => 10,
             'PhpDocReader\\' => 13,
         ),
         'O' => 
@@ -33,6 +35,10 @@ class ComposerStaticInit65047e9e09f9201109fb40869ae250a3
         array (
             'DI\\' => 3,
         ),
+        'C' => 
+        array (
+            'Cekta\\DI\\' => 9,
+        ),
     );
 
     public static $prefixDirsPsr4 = array (
@@ -40,9 +46,17 @@ class ComposerStaticInit65047e9e09f9201109fb40869ae250a3
         array (
             0 => __DIR__ . '/..' . '/rakit/validation/src',
         ),
+        'Psr\\SimpleCache\\' => 
+        array (
+            0 => __DIR__ . '/..' . '/psr/simple-cache/src',
+        ),
         'Psr\\Container\\' => 
         array (
             0 => __DIR__ . '/..' . '/psr/container/src',
+        ),
+        'Psr\\Cache\\' => 
+        array (
+            0 => __DIR__ . '/..' . '/psr/cache/src',
         ),
         'PhpDocReader\\' => 
         array (
@@ -59,6 +73,10 @@ class ComposerStaticInit65047e9e09f9201109fb40869ae250a3
         'DI\\' => 
         array (
             0 => __DIR__ . '/..' . '/php-di/php-di/src',
+        ),
+        'Cekta\\DI\\' => 
+        array (
+            0 => __DIR__ . '/..' . '/cekta/di/src',
         ),
     );
 
