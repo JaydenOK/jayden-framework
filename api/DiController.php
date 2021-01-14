@@ -10,21 +10,21 @@ use app\core\lib\controller\Controller;
 use app\language\Api;
 use app\module\utils\ResponseUtil;
 use app\service\di\Mailer;
-use app\service\di\UserManager;
+use app\service\di\CacheManager;
 use DI\Container;
 
 class DiController extends Controller
 {
 
     /**
-     * @var UserManager
+     * @var CacheManager
      */
     private $userManager;
 
     public function init()
     {
         //todo 替代构造方法
-        $this->userManager = new UserManager(new Mailer());
+        $this->userManager = new CacheManager(new Mailer());
 
     }
 
@@ -33,4 +33,8 @@ class DiController extends Controller
         $this->userManager->register('603480498@qq.com', 'aaaaaaa');
     }
 
+    public function simpleDi()
+    {
+        
+    }
 }

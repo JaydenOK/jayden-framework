@@ -14,13 +14,9 @@ function config($filename)
 
 //######################################            php函数           ############################################
 //打印变量
-function dd($variable, $exit = false)
+function p($variable, $exit = false)
 {
-    echo '<pre style="background-color:#DFDFDF;color:#666;font-size:14px;font-weight:bold;">
-';
-    var_dump($variable);
-    echo '
-</pre>';
+    print_r($variable);
     if ($exit) {
         exit(0);
     }

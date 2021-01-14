@@ -1,10 +1,10 @@
 <?php
 
-use app\service\di\UserManager;
+use app\service\di\CacheManager;
 use DI\Container;
 
 return [
-    UserManager::class => function () {
-        return new UserManager(new \app\service\di\Mailer());
+    CacheManager::class => function () {
+        return new CacheManager(new \app\service\di\Mailer());
     },
 ];
