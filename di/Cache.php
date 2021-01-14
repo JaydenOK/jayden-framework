@@ -70,6 +70,6 @@ class Cache implements DiAwareInterface
         if (!is_object($this->_connect)) {
             $this->_connect = $this->_connect();
         }
-        $this->_connect->delete($key);
+        return $this->_connect->delete($key);
     }
 }
