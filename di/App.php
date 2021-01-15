@@ -9,37 +9,37 @@ use module\cache\Redis;
 class App
 {
 
-    protected $di;
+    protected $container;
 
     public function __construct()
     {
-        $this->di = new Di();
+        $this->container = new Container();
     }
 
-    public function getDi()
+    public function getContainer()
     {
-        return $this->di;
+        return $this->container;
     }
 
     public function inject()
     {
-        $this->di->set('redisCache', function () {
+        $this->container->set('redisCache', function () {
             return new Redis();
         });
-        $this->di->set('mongoCache', function () {
+        $this->container->set('mongoCache', function () {
             return new Mongo();
         });
-        $this->di->set('fileCache', function () {
+        $this->container->set('fileCache', function () {
             return new File();
         });
 
-        $this->di->set('redis', function () {
+        $this->container->set('redis', function () {
             return new Cache(['type' => 'redisCache']);
         });
-        $this->di->set('mongo', function () {
+        $this->container->set('mongo', function () {
             return new Cache(['type' => 'mongoCache']);
         });
-        $this->di->set('file', function () {
+        $this->container->set('file', function () {
             return new Cache(['type' => 'fileCache']);
         });
     }

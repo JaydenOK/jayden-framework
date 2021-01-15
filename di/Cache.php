@@ -6,7 +6,7 @@ class Cache implements DiAwareInterface
 {
     /**
      * 注入的di对象
-     * @var Di
+     * @var Container
      */
     protected $_di;
 
@@ -49,7 +49,7 @@ class Cache implements DiAwareInterface
         return $this->_di->get($service);
     }
 
-    public function get($key)
+    public function find($key)
     {
         if (!is_object($this->_connect)) {
             $this->_connect = $this->_connect();
