@@ -47,4 +47,17 @@ utils php常用工具集合 (一般一个工具存放在一个文件夹)
 require '../bootstrap.php';
 ```
 
+存在的独立功能模块
+```text
+PSR 注册命名空间   | autoloader/Autoloader.php
+雪花算法 （分布式ID生成） | php-snowflake
+DI容器  | di
+php事件机制 | php-event
+树的多级数组转换 （对象，节点方式）| tree
+util工具类 XML，alias转盘抽奖算法， | util 
+php-di容器 | vendor 
+rakit 参数验证器 | rakit 
+```
+
+ 
 
