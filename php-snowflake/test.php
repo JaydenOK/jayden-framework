@@ -35,16 +35,17 @@ $autoloader->register();
 
 
 ////// 指定数据中心ID及机器ID.
-//$dataCenterId = '1010';
-//$workerId = '2';  //
+$dataCenterId = '1010';
+$workerId = '23';  //
 //$snowflake = new \Godruoyi\Snowflake\Snowflake($dataCenterId, $workerId);
 //$id = $snowflake->id();
 //echo $id;
 
 
 ////// 指定开始时间.
-$snowflake = new \Godruoyi\Snowflake\Snowflake;
-$startDate = '2020-01-01';
+$snowflake = new \Godruoyi\Snowflake\Snowflake($dataCenterId, $workerId);
+$startDate = '2021-01-01';
 $snowflake->setStartTimeStamp(strtotime($startDate) * 1000);
+
 $id = $snowflake->id();
 echo $id;
