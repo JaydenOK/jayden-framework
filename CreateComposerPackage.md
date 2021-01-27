@@ -16,7 +16,7 @@ composer init  （使用composer工具删除composer.json）
 /vendor/  
 composer.lock  
 
-7，提交到github  
+提交到github
 
 git tag v1.0  (并发布)  
 git push origin --tags  
