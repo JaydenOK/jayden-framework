@@ -43,5 +43,5 @@ GitHub的仓库
 
 ##################################################  
 测试在其他项目拉取包：  
-composer require jaydenman/myframework   
+composer require jaydenman/jayden-framework  
 ##################################################  
