@@ -16,13 +16,15 @@ composer init  （使用composer工具删除composer.json）
 /vendor/  
 composer.lock  
 
-提交到github
-
-git tag v1.0  (并发布)  
-git push origin --tags  
+提交代码到github
 git add .  
 git commit -m "jayden-framework框架"  
 git push  
+
+添加版本  号
+git tag v1.0.1      #   版本号  
+git tag -l          #  查看有哪些版本号  
+git push origin --tags   #   将所有版本号push到远程仓库  
 
 8，访问 packagist :  
 https://packagist.org/packages/submit  
@@ -31,16 +33,15 @@ https://packagist.org/packages/submit
 check检查，再submit提交即可  
 
 
-
 实现 Packagist网站 package自动更新  
-在上传成功后出现This package is not auto-updated. Please set up the GitHub Hook for Packagis  
-
-解决方案是在当前的GitHub的仓库的设置中URL链接认证，https://packagist.org/api/bitbucket?username=buleknight&apiToken=API_TOKEN  
-API_TOKEN在Packagist 网站的个人中心  
+设置git仓库webhook地址: https://packagist.org/api/bitbucket?username=jaydenman&apiToken=API_TOKEN  
+API_TOKEN 在Packagist 网站的个人中心找到: https://packagist.org/profile/
 
 GitHub的仓库
 
 
 
+##################################################  
 测试在其他项目拉取包：  
 composer require jaydenman/myframework   
+##################################################  

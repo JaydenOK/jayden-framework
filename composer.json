@@ -1,6 +1,7 @@
 {
   "name": "jaydenman/jayden-framework",
   "description": "my-framework",
+  "license": "MIT",
   "type": "library",
   "authors": [
     {
