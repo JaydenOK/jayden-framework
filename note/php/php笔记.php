@@ -1,4 +1,26 @@
 <?php
+
+//))))))
+//php-wsdl客户端调用
+$wsdl = 'https://oms.goodcang.net/default/svc/wsdl';
+$options = array(
+    "trace" => true,
+    "connection_timeout" => 60,
+    "encoding" => "utf-8",
+);
+$client = new SoapClient($wsdl, $options);
+
+$params['wis_code'] = 'WTG679-8-20210131';
+$req = array(
+    'service' => 'getWhInventoryStorageDetail',
+    'paramsJson' => json_encode($params),
+);
+$req['appToken'] = '65973c830a9497a4764461c71607bc35'; //易佰英仓
+$req['appKey'] = '1ca5693d6626953c0917fc01be137fc1'; //易佰英仓
+$req['language'] = 'zh_CN';
+$result = $client->callService($req);
+print_r($result);
+
 ////////////////  static 的 self 区别 : （ 区别对于静态方法而言,self:: 当前代码类方法，static:: 继承类方法【符合对面对象重写静态类方法】）
 
 class Car
@@ -14,6 +36,7 @@ class Car
     }
 
 }
+
 class Mercedes extends Car
 {
 
@@ -22,6 +45,7 @@ class Mercedes extends Car
         echo "I am a Mercedes!";
     }
 }
+
 Mercedes::model(); ////但实际输出是：I am a Car!
 
 //对于self的解释
@@ -52,6 +76,7 @@ Mercedes::model(); ////但实际输出是：I am a Car!
 
 //////////////  匿名函数使用
 use Rakit\Validation\Rules\Interfaces\BeforeValidate;
+
 //$db 为cache 方法通过 call_user_func($callable, $this); 传入的$this对象,$this又是调用者对象，即是new DB()对象[new DB()等于$db]
 //使用外部参数可以使用 use ($outParams)
 $outParams = 1;
