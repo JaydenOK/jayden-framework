@@ -1,7 +1,10 @@
 
 ## Jayden-Framework 框架  
 
-`（注意：一般目录下带有bootstrap.php文件的为独立于框架的用例模块）  `
+`
+（注意：一般目录下带有bootstrap.php文件的为独立于框架的用例模块）  
+php version >7.3
+`
 
 项目jayden-framework即为app应用根目录，命名空间根目录app:    
 

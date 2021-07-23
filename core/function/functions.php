@@ -1038,7 +1038,8 @@ function getRandom($length, $numeric = 0)
     $hash = '';
     $max = strlen($seed) - 1;
     for ($index = 0; $index < $length; $index++) {
-        $hash .= $seed{mt_rand(0, $max)};
+        $i = mt_rand(0, $max);
+        $hash .= $seed[$i];
     }
     return $hash;
 }
