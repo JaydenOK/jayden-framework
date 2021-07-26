@@ -6,11 +6,11 @@
 namespace app\api;
 
 use app\core\lib\controller\Controller;
+use app\language\Api;
 use app\module\utils\ResponseUtil;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\Exception\RequestException;
-use GuzzleHttp\Psr7\Request;
 use Psr\Http\Message\ResponseInterface;
 
 class GuzzleHttpController extends Controller
@@ -32,7 +32,7 @@ class GuzzleHttpController extends Controller
             $code = $response->getStatusCode();
             $body = $response->getBody();
             return ResponseUtil::getOutputArrayByCodeAndData(
-                0,
+                Api::SUCCESS,
                 ['code' => $code, 'size' => $body->getSize(), 'Content-Type' => $contentType, 'response' => \GuzzleHttp\json_decode($body->getContents()),]
             );
         } catch (GuzzleException $e) {
@@ -45,7 +45,7 @@ class GuzzleHttpController extends Controller
     public function post()
     {
         $data = json_decode('[{"transfer_no":"ALLOT2210722061583","type":1,"warehouse_out":"GC_UK","warehouse_in":"GC-uk-amazon","sku":"GB-QCMP2808-22","quantity":"10"}]', true);
-        $uri = 'http://dc.yibainetwork.com:86/OverseaStock/virtualTransfer';
+        //$uri = 'http://dc.yibainetwork.com:86/OverseaStock/virtualTransfer';
         $uri = 'http://dp.yibai-it.com:10032/OverseaStock/virtualTransfer';
         try {
             $client = new Client();
@@ -53,7 +53,7 @@ class GuzzleHttpController extends Controller
             //$response = $client->request('POST', $uri, ['json' => json_encode($data)]);
             $body = $response->getBody();
             $code = $response->getStatusCode();
-            return ResponseUtil::getOutputArrayByCodeAndData(0, compact('code', 'body'));
+            return ResponseUtil::getOutputArrayByCodeAndData(Api::SUCCESS, compact('code', 'body'));
         } catch (GuzzleException $e) {
             //Write Log
             print_r($e->getMessage());
@@ -77,7 +77,7 @@ class GuzzleHttpController extends Controller
                     echo $e->getMessage() . "\n";
                     echo $e->getRequest()->getMethod();
                 });
-            return ResponseUtil::getOutputArrayByCodeAndData(0, $responseData);
+            return ResponseUtil::getOutputArrayByCodeAndData(Api::SUCCESS, $responseData);
         } catch (GuzzleException $e) {
             //Write Log
             print_r('请求异常：' . $e->getMessage());
