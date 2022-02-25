@@ -1,4 +1,7 @@
 <?php
+/**
+ * 异步任务
+ */
 
 use Swoole\Http\Request;
 use Swoole\Http\Response;
