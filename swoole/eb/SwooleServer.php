@@ -302,7 +302,12 @@ class SwooleServer
         return $this->_server;
     }
 
-    public function setSwooleTableConfig($size = 2048, $columns = [])
+    /**
+     * @param int $size 参数指定表格的最大行数，必须为2的指数
+     * @param array $columns
+     * @return $this
+     */
+    public function setSwooleTableConfig($size = 8192, $columns = [])
     {
         $this->tableSize = $size;
         $this->tableColumns = $columns;

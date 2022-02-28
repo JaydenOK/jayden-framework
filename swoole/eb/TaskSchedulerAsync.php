@@ -1,64 +1,48 @@
 <?php
 
+/**
+ * Class TaskScheduler
+ */
 class TaskSchedulerAsync
 {
     /**
-     * @desc swoole客户端连接
-     * @var swoole_client
+     * @var Swoole\Client
      */
-    protected $_swooleClient = null;
-
+    protected $_swooleClient;
+    protected $_swooleProtocol;
+    protected $_swooleServerHost;
+    protected $_swooleServerPort;
     /**
-     * swoole服务协议
-     * @var null
-     */
-    protected $_swooleProtocol = null;
-
-    /**
-     * swoole服务主机地址
-     * @var null
-     */
-    protected $_swooleServerHost = null;
-
-    /**
-     * @desc swoole服务端口
-     * @var string
-     */
-    protected $_swooleServerPort = null;
-
-    /**
-     * 任务对象
      * @var TaskAbstract
      */
-    protected $_task = null;
+    protected $_task;
+    protected $_swooleConfigs = ['worker_num' => 1, 'task_worker_num' => 10, 'daemonize' => false];
 
     /**
-     * swoole服务配置参数
-     * @var array
-     */
-    protected $_swooleConfigs = [
-        'worker_num' => 1,
-        'task_worker_num' => 10,
-        'daemonize' => false
-    ];
-
-    /**
-     * TaskScheduler constructor.
-     * @param $task
+     * TaskSchedulerAsync constructor.
+     * @param $task TaskAbstract
      * @param array $swooleConfigs
      */
-    public function __construct($task, $swooleConfigs = [])
+    public function __construct(TaskAbstract $task, $swooleConfigs = [])
     {
         $this->_task = $task;
         $this->_swooleConfigs = array_merge($this->_swooleConfigs, $swooleConfigs);
         $serverKey = $this->_task->generateSwooleServerKey();
-        //设置swoole日志记录路径
         $logPath = LOG_DIR . 'swoole';
         if (!file_exists($logPath)) {
             mkdir($logPath, '0777', true);
         }
-        $logName = $serverKey . '.log';
-        $this->_swooleConfigs['log_file'] = $logPath . DIRECTORY_SEPARATOR . $logName;
+        $this->_swooleConfigs['log_file'] = $logPath . DS . $serverKey . '.log';
+    }
+
+    /**
+     * 服务启动回调函数
+     * @param $server
+     */
+    public function onStart(SwooleServer $server)
+    {
+        //@TODO 服务启动处理任务事件
+        echo date('[Y-m-d H:i:s]') . ' Swoole Server Start' . PHP_EOL;
     }
 
     /**
@@ -80,6 +64,7 @@ class TaskSchedulerAsync
             return true;
         } catch (Exception $e) {
             echo date('[Y-m-d H:i:s]') . ' runTask: Exception, ' . var_export($e, true) . PHP_EOL;
+            return false;
         }
     }
 
@@ -126,7 +111,7 @@ class TaskSchedulerAsync
                 throw new Exception('Save Swoole Server Faied');
             $masterPid = '';
         } else {
-            $configs = $swooleServerInfo['configs'];
+            //$configs = $swooleServerInfo['configs'];
             $masterPid = $swooleServerInfo['master_pid'];
             $this->_swooleServerHost = $swooleServerInfo['host'];
             $this->_swooleServerPort = $swooleServerInfo['port'];
@@ -157,56 +142,31 @@ class TaskSchedulerAsync
     }
 
     /**
-     * 任务处理回调函数
-     * @param $server SwooleServer
-     * @param $taskId
-     * @param $srcWorkerId
-     * @param $data
-     * @return mixed
+     * @param SwooleServer $server
+     * @return bool
      */
-    public function onTask($server, $taskId, $srcWorkerId, $data)
+    public function refreshServerInfo(SwooleServer $server)
     {
-        //每个Task任务进程单独实例化mongodb类，解决mongodb多进程共享连接的bug
-        try {
-            $config = include CONFIG_DIR . ORG . '/mongodbConfig.php';
-            $dsn = isset($config['dsn']) ? trim($config['dsn']) : '';
-            $dbName = isset($config['db_name']) ? trim($config['db_name']) : '';
-            //$db维护一个MongoDB\Client
-            $db = Db::getInstance()->createConnection($dsn, $dbName);
-        } catch (Exception $e) {
-            echo 'Connection MongoDB Failed';
-            exit;
+        $serverKey = $this->_task->generateSwooleServerKey();
+        $swooleServerModel = new SwooleServerModel();
+        $swooleServerInfo = $swooleServerModel->findOne(['server_key' => $serverKey]);
+        if (!empty($swooleServerInfo)) {
+            $filter = ['_id' => $swooleServerInfo->_id];
+            $updateData = [
+                'master_process_name' => $server->getMasterProcessName(),
+                'manager_process_name' => $server->getManagerProcessName(),
+                'master_pid' => $server->getMasterPid(),
+                'manager_pid' => $server->getManagerPid(),
+                'port' => $server->getPort(),
+                'host' => $server->getHost(),
+                'status' => SwooleServerManager::SERVER_RUNNING,
+                'update_time' => date('Y-m-d H:i:s'),
+                'start_time' => date('Y-m-d H:i:s'),
+                'error_code' => $server->getLastError()
+            ];
+            return $swooleServerModel->updateOne($filter, $updateData);
         }
-        try {
-            /**
-             * 注册全局变量db，在Model获取使用这个db
-             *  $this->_db = Front::getGlobalVar('db');
-             */
-            Front::registryGlobalVar('db', $db);
-            //注册任务观察者
-            $this->_task->registerTaskObserver();
-            //注册任务处理程序
-            $this->_task->registerTaskWorker();
-            //@TODO task进程处理任务事件
-            echo date('[Y-m-d H:i:s]') . ' onTask-Start:taskId:' . $taskId . ', _id: ' . $data . PHP_EOL;
-            $flag = $this->_task->runTask($data);
-        } catch (Exception $e) {
-            echo date('[Y-m-d H:i:s]') . ' onTask-Exception' . $e->getMessage() . PHP_EOL;
-        }
-        //删除内存表数据
-        $server->getServerTable()->del(strval($data));
-        $count = $server->getServerTable()->count();
-        echo date('[Y-m-d H:i:s]') . ' table-count:' . $count . PHP_EOL;
-    }
-
-    /**
-     * 服务启动回调函数
-     * @param $server
-     */
-    public function onStart($server)
-    {
-        //@TODO 服务启动处理任务事件
-        echo date('[Y-m-d H:i:s]') . ' Swoole Server Start' . PHP_EOL;
+        return false;
     }
 
     /**
@@ -217,7 +177,7 @@ class TaskSchedulerAsync
      * @param $data
      * @return bool
      */
-    public function onReceive($server, $fd, $reactorId, $data)
+    public function onReceive(SwooleServer $server, $fd, $reactorId, $data)
     {
         echo date('[Y-m-d H:i:s]') . ' onReceive-Start:' . PHP_EOL;
         try {
@@ -243,8 +203,10 @@ class TaskSchedulerAsync
             } else {
                 echo date('[Y-m-d H:i:s]') . ' onReceive:No Task Received';
             }
+            return true;
         } catch (Exception $e) {
             echo date('[Y-m-d H:i:s]') . ' onReceive:Receive Task Exception:' . $e->getMessage() . PHP_EOL;
+            return false;
         }
     }
 
@@ -255,7 +217,7 @@ class TaskSchedulerAsync
      * @param int $dstWorkerId
      * @return bool
      */
-    public function deliverTask($server, $_id, $dstWorkerId = -1)
+    public function deliverTask(SwooleServer $server, $_id, $dstWorkerId = -1)
     {
         $taskModel = new TaskModel();
         if (is_string($_id)) {
@@ -288,7 +250,7 @@ class TaskSchedulerAsync
     /**
      * @param $server SwooleServer
      */
-    public function deliverRemainingTask($server)
+    public function deliverRemainingTask(SwooleServer $server)
     {
         while (true) {
             //获取正在运行的任务，并将运行时间超过10分钟的任务标记成失败
@@ -297,7 +259,7 @@ class TaskSchedulerAsync
             $canDeliverTaskIdNum = $taskWorkerNum - $runningTaskIdNum;
             echo date('[Y-m-d H:i:s]') . ' deliverRemainingTask:task_worker_num:' . $taskWorkerNum . ',runningTaskIdNum:' . $runningTaskIdNum . ',canDeliverTaskIdNum:' . $canDeliverTaskIdNum . PHP_EOL;
             if ($canDeliverTaskIdNum <= 0) {
-                echo date('[Y-m-d H:i:s]') . ' remainRunNum:' . $canDeliverTaskIdNum . PHP_EOL;
+                echo date('[Y-m-d H:i:s]') . ' workerSleep:1' . PHP_EOL;
                 sleep(1);
                 continue;
             }
@@ -314,32 +276,45 @@ class TaskSchedulerAsync
     }
 
     /**
-     * @param SwooleServer|null $server
-     * @return bool
+     * 任务处理回调函数 (不要返回数据到worker)
+     * @param SwooleServer $server
+     * @param $taskId
+     * @param $srcWorkerId
+     * @param $data
      */
-    public function refreshServerInfo(SwooleServer $server = null)
+    public function onTask(SwooleServer $server, $taskId, $srcWorkerId, $data)
     {
-        $serverKey = $this->_task->generateSwooleServerKey();
-        $swooleServerModel = new SwooleServerModel();
-        $swooleServerInfo = $swooleServerModel->findOne(['server_key' => $serverKey]);
-        if (!empty($swooleServerInfo)) {
-            $filter = ['_id' => $swooleServerInfo->_id];
-            $updateData = [
-                'master_process_name' => $server->getMasterProcessName(),
-                'manager_process_name' => $server->getManagerProcessName(),
-                'master_pid' => $server->getMasterPid(),
-                'manager_pid' => $server->getManagerPid(),
-                'port' => $server->getPort(),
-                'host' => $server->getHost(),
-                'status' => SwooleServerManager::SERVER_RUNNING,
-                'update_time' => date('Y-m-d H:i:s'),
-                'start_time' => date('Y-m-d H:i:s'),
-                'error_code' => $server->getLastError()
-            ];
-            return $swooleServerModel->updateOne($filter, $updateData);
+        //每个Task任务进程单独实例化mongodb类，解决mongodb多进程共享连接的bug
+        try {
+            $config = include(CONFIG_DIR . ORG . '/mongodbConfig.php');
+            $dsn = isset($config['dsn']) ? trim($config['dsn']) : '';
+            $dbName = isset($config['db_name']) ? trim($config['db_name']) : '';
+            //$db维护一个MongoDB\Client
+            $db = Db::getInstance()->createConnection($dsn, $dbName);
+            try {
+                /**
+                 * 注册全局变量db，在Model获取使用这个db
+                 *  $this->_db = Front::getGlobalVar('db');
+                 */
+                Front::registryGlobalVar('db', $db);
+                //注册任务观察者
+                $this->_task->registerTaskObserver();
+                //注册任务处理程序
+                $this->_task->registerTaskWorker();
+                //@TODO task进程处理任务事件
+                echo date('[Y-m-d H:i:s]') . ' onTask-Start:taskId:' . $taskId . ', _id: ' . $data . PHP_EOL;
+                $flag = $this->_task->runTask($data);
+            } catch (Exception $e) {
+                echo date('[Y-m-d H:i:s]') . ' onTask-Exception' . $e->getMessage() . PHP_EOL;
+            }
+            //删除内存表数据
+            $server->getServerTable()->del(strval($data));
+            $count = $server->getServerTable()->count();
+            echo date('[Y-m-d H:i:s]') . ' table-count:' . $count . PHP_EOL;
+        } catch (Exception $e) {
+            echo 'Connection MongoDB Failed';
         }
-        return false;
-    }
 
+    }
 
 }
