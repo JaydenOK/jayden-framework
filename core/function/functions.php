@@ -1561,24 +1561,24 @@ function getColumnGroupByField($array, $field, $column = '', $isMultiple = false
 }
 
 /**
- * socket异步请求
- * @param $url
- * @param mixed $data
- * @param string $method
- * @param bool $getResponse
- * @param string $responseData
- * @return bool
+ * 发送异步请求，socket方式 (php.ini开启allow_url_fopen=on)
+ * @param $url string 请求地址，不包含http(s)信息
+ * @param mixed $data get或post请求数据
+ * @param string $method 请求方式 GET|POST
+ * @param bool $isGetResponse true转换为同步方式，获取响应数据
+ * @return bool|string 异步返回true，同步则返回带header,body的响应信息（可通过\r\n\r\n分割获取到body）
+ * @throws Exception
  */
-function asyncRequest($url, $data = [], $method = 'GET', $getResponse = false, &$responseData = '')
+function asyncRequest($url, $data = [], $method = 'GET', $isGetResponse = false)
 {
     $method = strtoupper($method);
     if (!in_array($method, ['GET', 'POST'])) {
-        exit('Invalid Method:' . $method);
+        throw new Exception('Invalid Method:' . $method);
     }
     $target = parse_url($url);
     $port = isset($target['port']) ? $target['port'] : 80;
-    if (!$fp = @fsockopen($target['host'], $port, $errno, $errstr, 5)) {
-        exit('Fail To Connect ' . $url . ": $errstr [$errno]");
+    if (!$fp = @fsockopen($target['host'], $port, $errNo, $errStr, 5)) {
+        throw new Exception('Fail To Connect ' . $url . ": $errStr [$errNo]");
     }
     stream_set_blocking($fp, false);
     $path = isset($target['path']) ? $target['path'] : $url;
@@ -1601,12 +1601,13 @@ function asyncRequest($url, $data = [], $method = 'GET', $getResponse = false, &
         fputs($fp, "{$method} " . $path . " HTTP/1.0\r\n");
         fputs($fp, "Connection: close\r\n\r\n");
     }
-    if ($getResponse) {
+    $responseData = true;
+    if ($isGetResponse) {
         $responseData = '';
         while (!feof($fp)) {
-            $responseData .= fgets($fp, 128);
+            $responseData .= fgets($fp, 1024);
         }
     }
     @fclose($fp);
-    return true;
+    return $responseData;
 }
