@@ -6,11 +6,20 @@
     'aliases' => 
     array (
     ),
-    'reference' => 'f9140438940beb5ce1c7c1a4bfecf751044a56a4',
+    'reference' => '665fae1da8e707c7361631b393efcefebb286a49',
     'name' => 'jaydenman/jayden-framework',
   ),
   'versions' => 
   array (
+    'defuse/php-encryption' => 
+    array (
+      'pretty_version' => 'v2.3.1',
+      'version' => '2.3.1.0',
+      'aliases' => 
+      array (
+      ),
+      'reference' => '77880488b9954b7884c25555c2a0ea9e7053f9d2',
+    ),
     'guzzlehttp/guzzle' => 
     array (
       'pretty_version' => '7.0.0',
@@ -45,7 +54,66 @@
       'aliases' => 
       array (
       ),
-      'reference' => 'f9140438940beb5ce1c7c1a4bfecf751044a56a4',
+      'reference' => '665fae1da8e707c7361631b393efcefebb286a49',
+    ),
+    'lcobucci/clock' => 
+    array (
+      'pretty_version' => '2.0.0',
+      'version' => '2.0.0.0',
+      'aliases' => 
+      array (
+      ),
+      'reference' => '353d83fe2e6ae95745b16b3d911813df6a05bfb3',
+    ),
+    'lcobucci/jwt' => 
+    array (
+      'pretty_version' => '4.1.5',
+      'version' => '4.1.5.0',
+      'aliases' => 
+      array (
+      ),
+      'reference' => 'fe2d89f2eaa7087af4aa166c6f480ef04e000582',
+    ),
+    'league/event' => 
+    array (
+      'pretty_version' => '2.2.0',
+      'version' => '2.2.0.0',
+      'aliases' => 
+      array (
+      ),
+      'reference' => 'd2cc124cf9a3fab2bb4ff963307f60361ce4d119',
+    ),
+    'league/oauth2-client' => 
+    array (
+      'pretty_version' => '2.6.1',
+      'version' => '2.6.1.0',
+      'aliases' => 
+      array (
+      ),
+      'reference' => '2334c249907190c132364f5dae0287ab8666aa19',
+    ),
+    'league/oauth2-server' => 
+    array (
+      'pretty_version' => '8.3.3',
+      'version' => '8.3.3.0',
+      'aliases' => 
+      array (
+      ),
+      'reference' => 'f5698a3893eda9a17bcd48636990281e7ca77b2a',
+    ),
+    'league/oauth2server' => 
+    array (
+      'replaced' => 
+      array (
+        0 => '*',
+      ),
+    ),
+    'lncd/oauth2' => 
+    array (
+      'replaced' => 
+      array (
+        0 => '*',
+      ),
     ),
     'opis/closure' => 
     array (
@@ -55,6 +123,15 @@
       array (
       ),
       'reference' => '943b5d70cc5ae7483f6aff6ff43d7e34592ca0f5',
+    ),
+    'paragonie/random_compat' => 
+    array (
+      'pretty_version' => 'v9.99.100',
+      'version' => '9.99.100.0',
+      'aliases' => 
+      array (
+      ),
+      'reference' => '996434e5492cb4c3edcb9168db6fbb1359ef965a',
     ),
     'php-di/invoker' => 
     array (

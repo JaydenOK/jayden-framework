@@ -1,8 +1,8 @@
 <?php
 
 return [
-    'id' => 'john-utils',
-    'username' => 'John12321',
+    'id' => 'JaydenOK',
+    'username' => 'JaydenOK',
     'email' => '603480498@qq.com',
     'language' => 'cn',
     'database' => require('db.php'),

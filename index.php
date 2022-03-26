@@ -11,6 +11,7 @@ require __DIR__ . '/core/lib/App.php';
 defined('DEBUG') || define('DEBUG', false);
 //定义分隔符、应用目录、应用命名空间
 defined('DS') || define('DS', DIRECTORY_SEPARATOR);
+//APP_ROOT 后缀不带/
 defined('APP_ROOT') || define('APP_ROOT', __DIR__);
 defined('APP_NAME') || define('APP_NAME', 'app');
 

@@ -49,11 +49,19 @@ class App
     /**
      * @var string
      */
-    private $_body;
+    protected $_body;
     /**
      * @var Config
      */
     private $config;
+    /**
+     * @var \app\core\lib\Request
+     */
+    public $request;
+    /**
+     * @var Response
+     */
+    public $response;
 
     public static function getInstance()
     {
