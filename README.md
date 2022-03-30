@@ -19,7 +19,7 @@ api - UserController - add 添加方法
 add  方法名
 config 配置目录
 core 系统核心目录
-language  言语目录
+language  国际化语言目录
 module   模块
 third_party 第三方模块 (一般存放为直接下载的第三方项目)
 vendor  第三方扩展目录 (通过composer下载的扩展)
