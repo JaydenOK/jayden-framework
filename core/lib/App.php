@@ -182,7 +182,23 @@ class App
     public function getBody()
     {
         if (!is_null($this->_body)) return $this->_body;
-        return $this->_body = $this->request->getBodyArray();
+        if ($this->isCli()) {
+            $argv = $_SERVER['argv'];
+            $argv1 = isset($argv[1]) ? $argv[1] : '';
+            if (!empty($argv1)) {
+                foreach (explode('&', $argv1) as $item) {
+                    list($key, $value) = explode('=', $item);
+                    if (in_array($key, ['r', 'route'])) {
+                        $this->_body['r'] = $value;
+                    } else {
+                        $this->_body[$key] = $value;
+                    }
+                }
+            }
+        } else {
+            $this->_body = $this->request->getBodyArray();
+        }
+        return $this->_body;
     }
 
     /**
@@ -220,7 +236,7 @@ class App
                 $output = $this->getOutput($code, $this->translate($code));
             }
             $this->handleResult($output);
-            exit(0);
+            return;
         }
         print_r($e);
     }
@@ -268,6 +284,19 @@ class App
         if (!is_null($result)) {
             echo json_encode($result, JSON_UNESCAPED_UNICODE);
         }
-        exit(0);
     }
+
+    /**
+     * 是否在命令行执行
+     * @return bool
+     */
+    function isCli()
+    {
+        if (PHP_VERSION_ID > 70200) {
+            return (PHP_SAPI === 'cli');
+        } else {
+            return preg_match("/cli/i", php_sapi_name()) ? true : false;
+        }
+    }
+
 }
