@@ -13,6 +13,7 @@ app架构遵循:应用-模块-控制器-方法结构
 jayden-framework/api/UserController.php  
 jayden-framework(app) 应用目录  
 api   模块      
+command   命令行模块      
 api - UserController  控制器    
 api - UserController - add 添加方法
 add  方法名
@@ -20,14 +21,19 @@ config 配置目录
 core 系统核心目录
 language  言语目录
 module   模块
-vendor  第三方扩展目录
+third_party 第三方模块 (一般存放为直接下载的第三方项目)
+vendor  第三方扩展目录 (通过composer下载的扩展)
 ```
   
 ## 
 action方法内部获取请求数据，使用$this->body或注入run($body)获取  
 访问路由：  
 ```
-http://jayden.cc/index.php?r=api/user/add  
+HTTP:
+http://jayden.cc/index.php?r=api/user/add
+  
+命令行：
+php index.php "r=command/Smc/start&param1=1&param2=2"
 ```
 
 ##########################################################  
