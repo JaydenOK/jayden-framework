@@ -3,6 +3,7 @@
 
 namespace app\service\auth2\repositories;
 
+use app\service\auth2\entities\RefreshTokenEntity;
 use League\OAuth2\Server\Entities\RefreshTokenEntityInterface;
 use League\OAuth2\Server\Repositories\RefreshTokenRepositoryInterface;
 

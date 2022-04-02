@@ -4,9 +4,43 @@
 namespace app\service\auth2\repositories;
 
 //Mysql存储
+use League\OAuth2\Server\RequestTypes\AuthorizationRequest;
+
 class MysqlRepository
 {
-    //模拟mysql存储的第三方应用查询配置信息
+
+    //模拟mysql存储的第三方应用配置信息
+    public static function set($table, $key, $value)
+    {
+        $tableFile = self::initTable($table);
+        $json = file_get_contents($tableFile);
+        $lists = json_decode($json, true);
+        $lists[$key] = $value;
+        $json = json_encode($lists, JSON_UNESCAPED_UNICODE);
+        return file_put_contents($tableFile, $json);
+    }
+
+    public static function get($table, $key)
+    {
+        $tableFile = self::initTable($table);
+        $json = file_get_contents($tableFile);
+        $lists = json_decode($json, true);
+        return isset($lists[$key]) ? $lists[$key] : null;
+    }
+
+    private static function initTable($tableName)
+    {
+        $dir = APP_ROOT . DS . 'logs' . DS . 'auth2';
+        if (!is_dir($dir)) {
+            mkdir($dir, 0755, true);
+        }
+        $file = $dir . DS . $tableName . '.txt';
+        if (!file_exists($file)) {
+            touch($file);
+        }
+        return $file;
+    }
+
     public function getClientConfig(string $clientId)
     {
         //查询返回
@@ -22,25 +56,24 @@ class MysqlRepository
         return null;
     }
 
-    public static function saveAuthRequest($authRequest)
+    public static function saveAuthRequest(AuthorizationRequest $authRequest)
     {
-        $dir = APP_ROOT . DS . 'logs' . DS . 'auth2';
-        if (!is_dir($dir)) {
-            mkdir($dir, 0755, true);
-        }
-        $file = $dir . DS . 'authRequest.txt';
-        if (!is_dir($file)) {
-            touch($file);
-        }
-        $json = file_get_contents($file);
-        $arr = @(array)json_decode($json, true);
-        //当前授权的id
-        $id = uniqid();
-        if (!isset($arr[$id])) {
-            $data[$id] = serialize($authRequest);
-            $res = file_put_contents($file, json_encode($data));
-        }
+        $table = 'authRequest';
+        $id = $authRequest->getUser()->getIdentifier();
+        self::set($table, $id, serialize($authRequest));
         return $id;
+    }
+
+
+    /**
+     * @param $id
+     * @return AuthorizationRequest|null
+     */
+    public static function getAuthRequest($id)
+    {
+        $table = 'authRequest';
+        $value = self::get($table, $id);
+        return $value ? unserialize($value) : null;
     }
 
 }

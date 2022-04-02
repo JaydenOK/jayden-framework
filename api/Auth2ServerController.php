@@ -27,7 +27,7 @@ use League\OAuth2\Server\Exception\OAuthServerException;
 class Auth2ServerController extends Controller
 {
 
-    //授权码服务端接口
+    //授权码接口（服务端）
     public function authorize()
     {
         $auth2Service = new Auth2Service();
@@ -35,7 +35,7 @@ class Auth2ServerController extends Controller
         $data = [
             'code' => $response->getStatusCode(),
             'reason' => $response->getReasonPhrase(),
-            'contents' => $response->getBody()->getContents(),
+            'contents' => json_decode($response->getBody()->getContents()),
             'headers' => $response->getHeaders(),
             'exception' => is_null($exception) ? null : [
                 'exception' => $exception->getMessage(),
@@ -53,6 +53,7 @@ class Auth2ServerController extends Controller
         $redirectUri = $this->app->request::get('redirect_uri', '');
         $state = $this->app->request::get('state', '');
         $scope = $this->app->request::get('scope', '');
+        $lgid = $this->app->request::get('lgid', '');
         $html = <<<EOT
 <html>
 <title>User Login</title>
@@ -62,6 +63,7 @@ class Auth2ServerController extends Controller
 <input type="hidden" name="redirect_uri" value="{$redirectUri}">
 <input type="hidden" name="state" value="{$state}">
 <input type="hidden" name="scope" value="{$scope}">
+<input type="hidden" name="lgid" value="{$lgid}">
 Account：<input type="input" name="account_id"><br>
 Password：<input type="password" name="password"><br>
 <input type="submit" value="Submit"><br>
@@ -72,7 +74,9 @@ EOT;
         exit;
     }
 
-    //用户授权登录
+    //用户授权登录，
+    //登录成功，携带code=&state=跳转到客户端设置的回调地址
+    //登录失败，contents返回异常信息 ，（线上exception不返回）
     public function login()
     {
         $auth2Service = new Auth2Service();
@@ -82,17 +86,13 @@ EOT;
             'reason' => $response->getReasonPhrase(),
             'contents' => $response->getBody()->getContents(),
             'headers' => $response->getHeaders(),
-            'exception' => is_null($exception) ? null : [
-                'exception' => $exception->getMessage(),
-                'file' => $exception->getFile(),
-                'trace' => $exception->getTrace(),
-            ],
+//            'exception' => is_null($exception) ? null : ['exception' => $exception->getMessage(), 'file' => $exception->getFile(), 'trace' => $exception->getTrace(),],
         ];
         return ResponseUtil::getOutputArrayByCodeAndData(Api::SUCCESS, $data);
     }
 
-    //授权码服务端接口
-    public function accessToken()
+    //授权码服务端接口，code换取token（服务端）
+    public function token()
     {
         $auth2Service = new Auth2Service();
         list($response, $exception) = $auth2Service->accessToken($this->body);

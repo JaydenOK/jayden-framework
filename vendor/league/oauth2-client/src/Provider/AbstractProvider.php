@@ -546,6 +546,27 @@ abstract class AbstractProvider
         return $token;
     }
 
+    //同一台服务器测试使用，返回数据postman测试服务端
+    public function getAccessTokenRequestData($grant, array $options = [])
+    {
+        $grant = $this->verifyGrant($grant);
+
+        $params = [
+            'client_id'     => $this->clientId,
+            'client_secret' => $this->clientSecret,
+            'redirect_uri'  => $this->redirectUri,
+        ];
+
+        $params   = $grant->prepareRequestParameters($params, $options);
+        $request  = $this->getAccessTokenRequest($params);
+        $requestData = [
+            'url' => $request->getHeader('host')[0].$request->getRequestTarget(),
+            'method' => $request->getMethod(),
+            'header' => $request->getHeaders(),
+            'contents' => $params,
+        ];
+        return $requestData;
+    }
     /**
      * Returns a PSR-7 request instance that is not authenticated.
      *

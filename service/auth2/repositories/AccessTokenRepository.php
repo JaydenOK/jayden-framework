@@ -3,6 +3,7 @@
 
 namespace app\service\auth2\repositories;
 
+use app\service\auth2\entities\AccessTokenEntity;
 use League\OAuth2\Server\Entities\AccessTokenEntityInterface;
 use League\OAuth2\Server\Entities\ClientEntityInterface;
 use League\OAuth2\Server\Repositories\AccessTokenRepositoryInterface;
@@ -36,11 +37,22 @@ class AccessTokenRepository implements AccessTokenRepositoryInterface
         // 创建新访问令牌时调用此方法
         // 可以用于持久化存储访问令牌，持久化数据库自行选择
         // 可以使用参数中的 AccessTokenEntityInterface 对象，获得有价值的信息：
-        // $accessTokenEntity->getIdentifier(); // 获得令牌唯一标识符
-        // $accessTokenEntity->getExpiryDateTime(); // 获得令牌过期时间
-        // $accessTokenEntity->getUserIdentifier(); // 获得用户标识符
-        // $accessTokenEntity->getScopes(); // 获得权限范围
-        // $accessTokenEntity->getClient()->getIdentifier(); // 获得客户端标识符
+        $accessToken = $accessTokenEntity->getIdentifier(); // 获得令牌唯一标识符
+        $expireTime = $accessTokenEntity->getExpiryDateTime(); // 获得令牌过期时间
+        $userId = $accessTokenEntity->getUserIdentifier(); // 获得用户标识符
+        $scope = $accessTokenEntity->getScopes(); // 获得权限范围
+        $clientId = $accessTokenEntity->getClient()->getIdentifier(); // 获得客户端标识符
+
+        $table = 'access_token_log';
+        $key = "{$clientId}:{$userId}";
+        $data = [
+            'client_id' => $clientId,
+            'user_id' => $userId,
+            'access_token' => $accessToken,
+            'expire_time' => $expireTime,
+            'scope' => $scope,
+        ];
+        MysqlRepository::set($table, $key, $data);
     }
 
     public function revokeAccessToken($tokenId)

@@ -235,6 +235,7 @@ class Process
                 $baseApp = new $baseApplication();
                 $startTime = time();
                 $queue->consume(function (\AMQPEnvelope $envelope, \AMQPQueue $queue) use ($baseApp, $queueConf, &$startTime, $worker) {
+                    //获取到队列消息，回调业务程序
                     $baseApp->run(['command' => $queueConf['callback'][0], 'action' => $queueConf['callback'][1], 'msg' => $envelope->getBody()]);
                     $queue->ack($envelope->getDeliveryTag());
                     //子进程执行时间超过设定时间，退出并重启

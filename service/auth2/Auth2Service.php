@@ -14,6 +14,7 @@ use app\service\auth2\entities\UserEntity;
 use GuzzleHttp\Psr7\Response;
 use GuzzleHttp\Psr7\ServerRequest;
 use GuzzleHttp\Psr7\Stream;
+use GuzzleHttp\Psr7\Utils;
 use League\OAuth2\Server\CryptKey;
 use League\OAuth2\Server\Exception\OAuthServerException;
 use League\OAuth2\Server\RequestTypes\AuthorizationRequest;
@@ -87,10 +88,11 @@ class Auth2Service
             // 认证请求对象可以被序列化并保存到用户的会话中。
             // 此时您可能希望将用户重定向到登录端点。
             // 用户登录后，在 AuthorizationRequest 上设置用户
-            $id = MysqlRepository::saveAuthRequest($authRequest);
+            $id = uniqid();
             $userEntity = new UserEntity();
             $userEntity->setIdentifier($id);
             $authRequest->setUser($userEntity); // an instance of UserEntityInterface
+            MysqlRepository::saveAuthRequest($authRequest);
             // At this point you should redirect the user to an authorization page.
             // This form will ask the user to approve the client and the scopes requested.
             // Once the user has approved or denied the client update the status
@@ -105,8 +107,20 @@ class Auth2Service
                 'redirect_uri' => $authRequest->getClient()->getRedirectUri(),
                 'state' => $authRequest->getState(),
                 'scope' => $params['scope'],
+                'lgid' => $id,
             ];
-            $response = new Response(200, [], 'http://jayden.cc?r=api/Auth2Server/loginView&' . http_build_query($data));
+            $accountInfo = [
+                'account' => 'user1',
+                'password' => '666666'
+            ];
+            $arr = [
+                'login_view' => 'http://jayden.cc?r=api/Auth2Server/loginView&' . http_build_query($data),
+                'api_test_user_login' => 'http://jayden.cc?r=api/Auth2Server/login&' . http_build_query($data) . '&' . http_build_query($accountInfo)
+            ];
+            $response = new Response();
+            $body = json_encode($arr);
+            $body = Utils::streamFor($body);
+            $response = $response->withBody($body);
             // Return the HTTP redirect response
             // 登录后才，返回 HTTP 重定向响应
             //$response = $server->completeAuthorizationRequest($authRequest, $response);
@@ -196,16 +210,18 @@ class Auth2Service
             //账号验证
             $isLogin = $this->userLogin($body);
             if (!$isLogin) {
-                throw new \Exception('user');
+                throw new \Exception('Invalid User');
             }
-            $authRequest = unserialize($body['']);
+            $id = $body['lgid'];
+            $authRequest = MysqlRepository::getAuthRequest($id);
             if (is_null($authRequest)) {
                 return '非法登录链接';
             }
-            // 设置用户实体(userEntity)
-            $authRequest->setUser(new UserEntity(1));
-            // 设置权限范围
-            $authRequest->setScopes(['basic']);
+            $scopeEntity = (new ScopeRepository())->getScopeEntityByIdentifier('basic');
+            $scopes = [
+                $scopeEntity
+            ];
+            $authRequest->setScopes($scopes);
             // true = 批准，false = 拒绝
             $authRequest->setAuthorizationApproved(true);
             // 完成后重定向至客户端请求重定向地址
@@ -222,10 +238,10 @@ class Auth2Service
 
     private function userLogin(array $body)
     {
-        if (!isset($body['client_id'], $body['account_id'], $body['password'])) {
+        if (!isset($body['client_id'], $body['account'], $body['password'])) {
             return false;
         }
-        if ($body['client_id'] == 'clientId123' && $body['account_id'] == 'abc' && $body['password'] == '666666') {
+        if ($body['client_id'] == 'clientId123' && $body['account'] == 'user1' && $body['password'] == '666666') {
             return true;
         }
         return false;

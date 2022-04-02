@@ -14,6 +14,7 @@ class BaseApplication
     {
     }
 
+    //队列回调业务程序
     public function run($jobArray)
     {
         if (!defined('APP_PATH') || !defined('YCF_CONFIG_PATH') || !defined('YCF_PROTECTED_PATH')) {
