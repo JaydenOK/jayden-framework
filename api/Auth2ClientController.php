@@ -86,17 +86,17 @@ class Auth2ClientController extends Controller
             'urlResourceOwnerDetails' => $host . '?r=api/Auth2Server/resource',
         ]);
         try {
-            //请求code 换取 accessToken, refreshToken
+            //0. 请求code 换取 accessToken, refreshToken
             // Try to get an access token using the authorization code grant.
 //            $accessToken = $provider->getAccessToken('authorization_code', [
 //                'code' => $_GET['code']
 //            ]);
 
-            //测试链接
-            $accessTokenData = $provider->getAccessTokenRequestData('authorization_code', [
-                'code' => $_GET['code'],
-                'code_verifier' => $this->codeChallenge
-            ]);
+            //0. 测试链接
+            $accessTokenData = $provider->getAccessTokenRequestData(
+                'authorization_code',
+                ['code' => $_GET['code'], 'code_verifier' => $this->codeChallenge]
+            );
             $bulkData = "";
             foreach ($accessTokenData['contents'] as $key => $value) {
                 $bulkData .= "{$key}:$value" . "\r\n";
@@ -104,24 +104,30 @@ class Auth2ClientController extends Controller
             $accessTokenData['contents'] = $bulkData;
             return $accessTokenData;
 
+            //1
             // We have an access token, which we may use in authenticated
             // requests against the service provider's API.
-            echo 'Access Token: ' . $accessToken->getToken() . "<br>";
-            echo 'Refresh Token: ' . $accessToken->getRefreshToken() . "<br>";
-            echo 'Expired in: ' . $accessToken->getExpires() . "<br>";
-            echo 'Already expired? ' . ($accessToken->hasExpired() ? 'expired' : 'not expired') . "<br>";
+//            echo 'Access Token: ' . $accessToken->getToken() . "<br>";
+//            echo 'Refresh Token: ' . $accessToken->getRefreshToken() . "<br>";
+//            echo 'Expired in: ' . $accessToken->getExpires() . "<br>";
+//            echo 'Already expired? ' . ($accessToken->hasExpired() ? 'expired' : 'not expired') . "<br>";
+
+
+            //2
             // Using the access token, we may look up details about the
             // resource owner.
-            $resourceOwner = $provider->getResourceOwner($accessToken);
-            var_export($resourceOwner->toArray());
+//            $resourceOwner = $provider->getResourceOwner($accessToken);
+//            var_export($resourceOwner->toArray());
+
+            //3
             // The provider provides a way to get an authenticated API request for
             // the service, using the access token; it returns an object conforming
             // to Psr\Http\Message\RequestInterface.
-            $request = $provider->getAuthenticatedRequest(
-                'GET',
-                'https://service.example.com/resource',
-                $accessToken
-            );
+//            $request = $provider->getAuthenticatedRequest(
+//                'GET',
+//                'https://service.example.com/resource',
+//                $accessToken
+//            );
         } catch (\League\OAuth2\Client\Provider\Exception\IdentityProviderException $e) {
             // Failed to get the access token or user details.
             exit($e->getMessage());

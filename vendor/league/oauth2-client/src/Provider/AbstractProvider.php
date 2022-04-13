@@ -546,7 +546,7 @@ abstract class AbstractProvider
         return $token;
     }
 
-    //同一台服务器测试使用，返回数据postman测试服务端
+    //同一台服务器测试使用，不请求服务端token接口，返回数据postman测试服务端
     public function getAccessTokenRequestData($grant, array $options = [])
     {
         $grant = $this->verifyGrant($grant);

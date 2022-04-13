@@ -23,6 +23,7 @@ language  国际化语言目录
 module   模块
 third_party 第三方模块 (一般存放为直接下载的第三方项目)
 vendor  第三方扩展目录 (通过composer下载的扩展)
+docs  一些文档说明
 ```
   
 ## 
