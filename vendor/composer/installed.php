@@ -6,7 +6,7 @@
     'aliases' => 
     array (
     ),
-    'reference' => '665fae1da8e707c7361631b393efcefebb286a49',
+    'reference' => '171e83a20e0a9a88b033b36801bbeb83f828a66a',
     'name' => 'jaydenman/jayden-framework',
   ),
   'versions' => 
@@ -54,7 +54,7 @@
       'aliases' => 
       array (
       ),
-      'reference' => '665fae1da8e707c7361631b393efcefebb286a49',
+      'reference' => '171e83a20e0a9a88b033b36801bbeb83f828a66a',
     ),
     'lcobucci/clock' => 
     array (
