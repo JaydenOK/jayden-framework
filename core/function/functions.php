@@ -1611,3 +1611,9 @@ function asyncRequest($url, $data = [], $method = 'GET', $isGetResponse = false)
     @fclose($fp);
     return $responseData;
 }
+
+//获取当前毫秒时间戳
+function getMillisecond()
+{
+    return intval(array_sum(array_reverse(explode(' ', microtime()))) * 1000);
+}
