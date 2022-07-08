@@ -2,6 +2,8 @@
 ## Jayden-Framework 框架  
 
 `
+PHP微框架及工具类库，树转换、rabbitmq使用，Swoole常驻进程/异步任务/多消费队列进程，Auth2.0，RSA加密解密，validation参数过滤校验、DI模式等。  
+同时是一个支持多模块小型PHP框架，如api、apiv2为模块目录  
 （注意：一般目录下带有bootstrap.php文件的为独立于框架的用例模块）  
 php version >7.3
 `
@@ -38,7 +40,7 @@ php index.php "r=command/Smc/start&param1=1&param2=2"
 ```
 
 ##########################################################  
-  其它目录为单个模块库  （换行加2个空格）
+  其它目录为单个模块库  
 ##########################################################  
 
 记录日常使用的php工具类库，mysql高阶查询等  
@@ -68,6 +70,5 @@ util工具类 XML，alias转盘抽奖算法， | util
 php-di容器 | vendor 
 rakit 参数验证器 | rakit 
 ```
-
- 
+ （换行加2个空格）
 
