@@ -86,7 +86,6 @@ $result = (new DB())->cache(function ($db) use ($outParams) {
     return $db->createCommand('SELECT * FROM customer WHERE id=1')->queryOne();
 
 });
-
 //$db类：
 class DB
 {
