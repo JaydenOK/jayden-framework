@@ -1,4 +1,4 @@
-<?php 
+<?php
 
 //篮球翻译适配器
 abstract class Player
@@ -11,6 +11,7 @@ abstract class Player
     }
 
     abstract public function Attack();
+
     abstract public function Defense();
 }
 
@@ -19,11 +20,12 @@ class Forwards extends Player
 {
     public function Attack()
     {
-        echo "前锋:".$this->name." 进攻\n";
+        echo "前锋:" . $this->name . " 进攻\n";
     }
+
     public function Defense()
     {
-        echo "前锋:".$this->name." 防守\n";
+        echo "前锋:" . $this->name . " 防守\n";
     }
 }
 
@@ -37,11 +39,12 @@ class Center extends Player
 
     public function Attack()
     {
-        echo "中锋:".$this->name." 进攻\n";
+        echo "中锋:" . $this->name . " 进攻\n";
     }
+
     public function Defense()
     {
-        echo "中锋:".$this->name." 防守\n";
+        echo "中锋:" . $this->name . " 防守\n";
     }
 }
 
@@ -49,6 +52,7 @@ class Center extends Player
 class ForeignCenter
 {
     private $name;
+
     public function setName($name)
     {
         $this->name = $name;
@@ -61,12 +65,12 @@ class ForeignCenter
 
     public function 进攻()
     {
-        echo "外籍中锋:".$this->name." 进攻\n";
+        echo "外籍中锋:" . $this->name . " 进攻\n";
     }
 
     public function 防守()
     {
-        echo "外籍中锋:".$this->name." 防守\n";
+        echo "外籍中锋:" . $this->name . " 防守\n";
     }
 }
 
@@ -85,6 +89,7 @@ class Translator extends Player
     {
         $this->foreignCenter->进攻();
     }
+
     public function Defense()
     {
         $this->foreignCenter->防守();
@@ -92,6 +97,7 @@ class Translator extends Player
 
 }
 
+print new 用户类("好人");
 
 
 // 客户端代码
