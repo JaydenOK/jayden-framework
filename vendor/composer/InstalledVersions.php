@@ -19,7 +19,7 @@ private static $installed = array (
     'aliases' => 
     array (
     ),
-    'reference' => '171e83a20e0a9a88b033b36801bbeb83f828a66a',
+    'reference' => '39e6cce4eb89cc263ff4019113d913cb934bdd81',
     'name' => 'jaydenman/jayden-framework',
   ),
   'versions' => 
@@ -67,7 +67,7 @@ private static $installed = array (
       'aliases' => 
       array (
       ),
-      'reference' => '171e83a20e0a9a88b033b36801bbeb83f828a66a',
+      'reference' => '39e6cce4eb89cc263ff4019113d913cb934bdd81',
     ),
     'lcobucci/clock' => 
     array (
@@ -172,6 +172,24 @@ private static $installed = array (
       array (
       ),
       'reference' => '66daff34cbd2627740ffec9469ffbac9f8c8185c',
+    ),
+    'php-http/httplug' => 
+    array (
+      'pretty_version' => '2.3.0',
+      'version' => '2.3.0.0',
+      'aliases' => 
+      array (
+      ),
+      'reference' => 'f640739f80dfa1152533976e3c112477f69274eb',
+    ),
+    'php-http/promise' => 
+    array (
+      'pretty_version' => '1.1.0',
+      'version' => '1.1.0.0',
+      'aliases' => 
+      array (
+      ),
+      'reference' => '4c4c1f9b7289a2ec57cde7f1e9762a5789506f88',
     ),
     'psr/container' => 
     array (
