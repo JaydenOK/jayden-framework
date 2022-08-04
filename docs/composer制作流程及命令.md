@@ -53,3 +53,9 @@ composer require jaydenman/jayden-framework
 执行命令> composer remove aws/aws-sdk-php  即可
 
 
+
+)))))))))
+composer 忽略依赖
+提示我的PHP 7版本太高，不符合composer.json需要的版本，但是在PHP 7下应该也是可以运行的，composer可以设置忽略版本匹配，命令是：
+composer install -vvv --profile --ignore-platform-reqs
+composer update -vvv --profile --ignore-platform-reqs
