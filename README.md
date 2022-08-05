@@ -33,10 +33,10 @@ action方法内部获取请求数据，使用$this->body或注入run($body)获�
 访问路由：  
 ```
 HTTP:
-http://jayden.cc/index.php?r=api/user/add
+http://jayden.cc/api/test/index?param1=1&param2=2
   
 命令行：
-php index.php "r=command/Smc/start&param1=1&param2=2"
+php index.php "command/Smc/test" "param1=1&param2=2"
 ```
 
 ##########################################################  

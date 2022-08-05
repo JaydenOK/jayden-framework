@@ -21,7 +21,7 @@ class App
      * 请求路由参数,如 api/user/add，api/user（则执行api/user/run方法）
      * @var string
      */
-    protected $route;
+    protected $pathInfo;
     /**
      * 模块（即目录名）
      * @var string
@@ -80,7 +80,7 @@ class App
         $this->response = new Response();
         $this->_body = $this->getBody();
         $this->initConfig($config);
-        $this->initRoute();
+        $this->initPathInfo();
     }
 
     private function initConfig(array $config)
@@ -96,31 +96,25 @@ class App
      * 初始化路由参数
      * 兼容路由参数【route或r】
      */
-    private function initRoute()
+    private function initPathInfo()
     {
-        if (!isset($this->_body['route']) || empty($this->_body['route']) || !is_string($this->_body['route'])) {
-            if (isset($this->_body['r']) && !empty($this->_body['r']) && is_string($this->_body['r'])) {
-                $this->_body['route'] = $this->_body['r'];
-                unset($this->_body['r']);
-            } else {
-                // welcome
-                echo 'Hi , Jayden-Framework !';
-                exit(0);
-            }
+        $this->pathInfo = $this->request->getPathInfo();
+        if (empty($this->pathInfo)) {
+            // welcome
+            echo 'Hi, Jayden-Framework.';
+            exit(0);
         }
-        $this->route = $this->_body['route'];
-        unset($this->_body['route']);
     }
 
     public function run()
     {
         try {
-            $this->checkRoute($this->route);
+            $this->checkRequestPath();
             if (!class_exists($this->className)) {
-                throw new Exception("控制器不存在:[{$this->className}]");
+                throw new Exception("error request:{$this->request->getPathInfo()}");
             }
             if (!method_exists($this->className, $this->action)) {
-                throw new Exception("{$this->action}方法不存在:[{$this->className}->{$this->action}]");
+                throw new Exception("not exist:{$this->request->getPathInfo()}");
             }
             $controller = new $this->className();
             $result = call_user_func_array([$controller, $this->action], ['body' => $this->_body]);
@@ -141,17 +135,16 @@ class App
     /**
      * 检查路由，自动转换控制器名称第一个字符为大写，方法名第一个小写
      * http://jayden-framework.cc?route=Api/DiTest/test
-     * @param $route
      * @throws Exception
      */
-    private function checkRoute($route)
+    private function checkRequestPath()
     {
-        $routeArr = explode('/', $route);
-        $this->module = isset($routeArr[0]) ? strtolower($routeArr[0]) : '';
-        $this->controller = isset($routeArr[1]) ? ucfirst($routeArr[1]) . $this->controllerSuffix : '';
-        $this->action = isset($routeArr[2]) ? $routeArr[2] : $this->action;
+        $pathArr = explode('/', $this->pathInfo);
+        $this->module = isset($pathArr[0]) ? strtolower($pathArr[0]) : '';
+        $this->controller = isset($pathArr[1]) ? ucfirst($pathArr[1]) . $this->controllerSuffix : '';
+        $this->action = isset($pathArr[2]) ? $pathArr[2] : $this->action;
         if (empty($this->module) || empty($this->controller)) {
-            throw new Exception("路由错误:[{$this->route}]");
+            throw new Exception("error path:{$this->pathInfo}");
         }
         //加上命名空间
         $this->className = APP_NAME . '\\' . $this->module . '\\' . $this->controller;
@@ -185,13 +178,15 @@ class App
         if ($this->isCli()) {
             $argv = $_SERVER['argv'];
             $argv1 = isset($argv[1]) ? $argv[1] : '';
+            $argv2 = isset($argv[2]) ? $argv[2] : '';
             if (!empty($argv1)) {
+                $this->request->setPathInfo($argv1);
+            }
+            if (!empty($argv2)) {
                 foreach (explode('&', $argv1) as $item) {
-                    list($key, $value) = explode('=', $item);
-                    if (in_array($key, ['r', 'route'])) {
-                        $this->_body['r'] = $value;
-                    } else {
-                        $this->_body[$key] = $value;
+                    $keyValue = explode('=', $item);
+                    if (isset($keyValue[0]) && !empty($keyValue[0])) {
+                        $this->_body[$keyValue[0]] = isset($keyValue[1]) ? $keyValue[1] : null;
                     }
                 }
             }

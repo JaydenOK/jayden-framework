@@ -31,4 +31,10 @@ class SmcController extends Controller
     }
 
 
+    public function test()
+    {
+        $data = array_merge(['action' => 'test'], $this->body);
+        return ResponseUtil::getOutputArrayByCodeAndData(Api::SUCCESS, $data);
+    }
+
 }
