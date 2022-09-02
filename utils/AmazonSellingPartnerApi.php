@@ -24,14 +24,88 @@ class AmazonSellingPartnerApi
 
     public function __construct($account)
     {
-        $this->region = $account['aws_region'];
-        $this->endpoint = $account['endpoint'];
-        $this->marketplaceId = $account['marketplace_id'];
-        $this->accessToken = $account['access_token'];
-        $this->accessKeyId = $account['access_key_id'];
-        $this->secretAccessKey = $account['secret_access_key'];
-        $this->sessionToken = $account['session_token'];
-        $this->sellingPartnerId = $account['selling_partner_id'];
+        $this->region = $account['aws_region'] ?? '';
+        $this->endpoint = $account['endpoint'] ?? '';
+        $this->marketplaceId = $account['marketplace_id'] ?? '';
+        $this->accessToken = $account['access_token'] ?? '';
+        $this->accessKeyId = $account['access_key_id'] ?? '';
+        $this->secretAccessKey = $account['secret_access_key'] ?? '';
+        $this->sessionToken = $account['session_token'] ?? '';
+        $this->sellingPartnerId = $account['selling_partner_id'] ?? '';
+    }
+
+    //获取授权地址：$authUrl
+    //https://sellercentral.amazon.ca/
+    //https://sellercentral.amazon.com/
+    //https://sellercentral.amazon.com.mx/
+    //https://sellercentral.amazon.com.br/
+    //https://sellercentral.amazon.sg/
+    //https://sellercentral.amazon.com.au/
+    //https://sellercentral-japan.amazon.com/
+    //https://sellercentral.amazon.ae/
+    //https://sellercentral.amazon.in/
+    //https://sellercentral.amazon.es/
+    //https://sellercentral.amazon.co.uk/
+    //https://sellercentral.amazon.fr/
+    //https://sellercentral.amazon.nl/
+    //https://sellercentral.amazon.de/
+    //https://sellercentral.amazon.it/
+    //https://sellercentral.amazon.se/
+    //https://sellercentral.amazon.com.tr/
+    //https://sellercentral.amazon.pl/
+    //https://sellercentral.amazon.sa/
+    protected function getAuthUrl($authUrl, $applicationId, $state)
+    {
+        $path = 'apps/authorize/consent';
+        return $authUrl . $path . '?application_id=' . $applicationId . '&state=' . base64_encode($state);
+    }
+
+    //通过code获取token
+    protected function getAccessToken($clientId, $clientSecret, $code)
+    {
+        $path = '/auth/o2/token';
+        $data['grant_type'] = 'authorization_code';
+        $data['client_id'] = $clientId;
+        $data['client_secret'] = $clientSecret;
+        $data['code'] = $code;
+        $tokenUrl = self::TOKEN_HOST . $path;
+        $header = ['Content-Type: application/x-www-form-urlencoded;charset=UTF-8'];
+        $responseArr = $this->curlRequest($tokenUrl, $data, $header);
+        return $responseArr;
+    }
+
+    //刷新token
+    protected function refreshAccessToken($clientId, $clientSecret, $refreshToken)
+    {
+        $path = '/auth/o2/token';
+        $data['grant_type'] = 'refresh_token';
+        $data['client_id'] = $clientId;
+        $data['client_secret'] = $clientSecret;
+        $data['refresh_token'] = $refreshToken;
+        $tokenUrl = self::TOKEN_HOST . $path;
+        $header = [
+            'Content-Type: application/x-www-form-urlencoded;charset=UTF-8'
+        ];
+        $responseArr = $this->curlRequest($tokenUrl, $data, $header);
+        return $responseArr;
+    }
+
+    //获取授权RTD token
+    protected function getRestrictedToken()
+    {
+        $path = '/tokens/2021-03-01/restrictedDataToken';
+        $queryParams = '';
+        $method = 'POST';
+        $restrictedResources = [
+            [
+                'method' => 'GET',
+                'path' => '/orders/v0/orders',
+                'dataElements' => ["buyerInfo", "shippingAddress"]
+            ]
+        ];
+        $bodyParam = ['restrictedResources' => $restrictedResources];
+        $responseArr = $this->send($path, $queryParams, $bodyParam, $method);
+        return $responseArr;
     }
 
     //发送带亚马逊签名的请求
@@ -206,80 +280,6 @@ class AmazonSellingPartnerApi
         }
         curl_close($ch);
         return array('http_code' => $http_code, 'data' => $response);
-    }
-
-    //获取授权地址：$authUrl
-    //https://sellercentral.amazon.ca/
-    //https://sellercentral.amazon.com/
-    //https://sellercentral.amazon.com.mx/
-    //https://sellercentral.amazon.com.br/
-    //https://sellercentral.amazon.sg/
-    //https://sellercentral.amazon.com.au/
-    //https://sellercentral-japan.amazon.com/
-    //https://sellercentral.amazon.ae/
-    //https://sellercentral.amazon.in/
-    //https://sellercentral.amazon.es/
-    //https://sellercentral.amazon.co.uk/
-    //https://sellercentral.amazon.fr/
-    //https://sellercentral.amazon.nl/
-    //https://sellercentral.amazon.de/
-    //https://sellercentral.amazon.it/
-    //https://sellercentral.amazon.se/
-    //https://sellercentral.amazon.com.tr/
-    //https://sellercentral.amazon.pl/
-    //https://sellercentral.amazon.sa/
-    protected function getAuthUrl($authUrl, $applicationId, $state)
-    {
-        $path = 'apps/authorize/consent';
-        return $authUrl . $path . '?application_id=' . $applicationId . '&state=' . base64_encode($state);
-    }
-
-    //通过code获取token
-    protected function getAccessToken($clientId, $clientSecret, $code)
-    {
-        $path = '/auth/o2/token';
-        $data['grant_type'] = 'authorization_code';
-        $data['client_id'] = $clientId;
-        $data['client_secret'] = $clientSecret;
-        $data['code'] = $code;
-        $tokenUrl = self::TOKEN_HOST . $path;
-        $header = ['Content-Type: application/x-www-form-urlencoded;charset=UTF-8'];
-        $responseArr = $this->curlRequest($tokenUrl, $data, $header);
-        return $responseArr;
-    }
-
-    //刷新token
-    protected function refreshAccessToken($clientId, $clientSecret, $refreshToken)
-    {
-        $path = '/auth/o2/token';
-        $data['grant_type'] = 'refresh_token';
-        $data['client_id'] = $clientId;
-        $data['client_secret'] = $clientSecret;
-        $data['refresh_token'] = $refreshToken;
-        $tokenUrl = self::TOKEN_HOST . $path;
-        $header = [
-            'Content-Type: application/x-www-form-urlencoded;charset=UTF-8'
-        ];
-        $responseArr = $this->curlRequest($tokenUrl, $data, $header);
-        return $responseArr;
-    }
-
-    //获取授权RTD token
-    protected function getRestrictedToken()
-    {
-        $path = '/tokens/2021-03-01/restrictedDataToken';
-        $queryParams = '';
-        $method = 'POST';
-        $restrictedResources = [
-            [
-                'method' => 'GET',
-                'path' => '/orders/v0/orders',
-                'dataElements' => ["buyerInfo", "shippingAddress"]
-            ]
-        ];
-        $bodyParam = ['restrictedResources' => $restrictedResources];
-        $responseArr = $this->send($path, $queryParams, $bodyParam, $method);
-        return $responseArr;
     }
 
 }
