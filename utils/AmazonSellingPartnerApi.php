@@ -1,13 +1,12 @@
 <?php
 
 /**
- * 亚马逊销售合作伙伴授权API (授权流程/签名/RDT信息)
+ * 亚马逊销售合作伙伴授权API (Amazon网页授权流程/生成签名/获取RDT受限token信息-PII)
  * Class AmazonSellingPartnerApi
  */
 class AmazonSellingPartnerApi
 {
 
-    //================================= Use My Amazon-Api =================================
     const TOKEN_HOST = 'https://api.amazon.com';
     const USER_AGENT = 'My Selling Tool/1.0 (Language=PHP/7.1.8;Platform=CentOS7)';
 
@@ -21,6 +20,7 @@ class AmazonSellingPartnerApi
     public $config;
     public $sellingPartnerId;
     public $curlOption = [];
+    public $withSecurityToken = true;
 
     public function __construct($account)
     {
@@ -109,38 +109,43 @@ class AmazonSellingPartnerApi
     }
 
     //发送带亚马逊签名的请求
-    public function send($api_uri, $query_params = [], $body_param = [], $method = 'GET')
+    public function send($uri, $queryParams = [], $bodyParams = [], $method = 'GET')
     {
         try {
             $datetime = gmdate('Ymd\THis\Z');
-            $headers = [
-                'content-type: application/json;charset=UTF-8',
-                'host: ' . $this->endpoint,
-                'user-agent: ' . self::USER_AGENT,
-                'x-amz-access-token: ' . $this->accessToken,
-                'x-amz-security-token: ' . $this->sessionToken,
-                'x-amz-date: ' . $datetime,
-            ];
-            ksort($body_param);
-            $api_url = 'https://' . $this->endpoint . $api_uri;
+            $headersArr = [];
+            $headersArr['host'] = $this->endpoint;
+            $headersArr['user-agent'] = self::USER_AGENT;
+            $headersArr['x-amz-access-token'] = $this->accessToken;
+            $headersArr['x-amz-date'] = $datetime;
+            $headersArr['content-type'] = 'application/json';
+            if ($this->withSecurityToken) {
+                $headersArr['x-amz-security-token'] = $this->sessionToken;
+            }
+            ksort($headersArr);
+            foreach ($headersArr as $key => $value) {
+                $headers[] = $key . ': ' . $value;
+            }
+            ksort($bodyParams);
+            $apiUrl = 'https://' . $this->endpoint . $uri;
             if (in_array($method, ['POST', 'PUT', 'PATCH'])) {
-                $body_param = !empty($body_param) ? json_encode($body_param) : '';
-                $json_data = $body_param;
+                $bodyParams = !empty($bodyParams) ? json_encode($bodyParams) : '';
+                $jsonData = $bodyParams;
             } else {
-                if (empty($body_param)) $body_param = '';
-                $json_data = '';
+                if (empty($bodyParams)) $bodyParams = '';
+                $jsonData = '';
             }
-            if (!empty($query_params)) {
-                ksort($query_params);
-                $query_string = http_build_query($query_params);
-                if (!empty($query_string)) $api_url .= '?' . $query_string;
+            if (!empty($queryParams)) {
+                ksort($queryParams);
+                $queryString = http_build_query($queryParams);
+                if (!empty($queryString)) $apiUrl .= '?' . $queryString;
             } else {
-                $query_string = '';
+                $queryString = '';
             }
-            $headers[] = 'Authorization: ' . $this->setAuthorization($api_uri, $query_string, $body_param, $method, $datetime);
+            $headers[] = 'Authorization: ' . $this->setAuthorization($uri, $queryString, $bodyParams, $method, $datetime);
             $this->curlOption = [];
             $this->curlOption[CURLOPT_CUSTOMREQUEST] = $method;
-            $response = $this->curlRequest($api_url, $json_data, $headers, $this->curlOption);
+            $response = $this->curlRequest($apiUrl, $jsonData, $headers, $this->curlOption);
             $data = json_decode($response['data'], true, 512, JSON_BIGINT_AS_STRING);
             $response['data'] = is_array($data) ? $data : $response['data'];
             if (is_string($response['data']) && stripos($response['data'], '<html') !== false) {
@@ -152,43 +157,39 @@ class AmazonSellingPartnerApi
         return $response;
     }
 
-    protected function setAuthorization($api_uri, $query_string, $body_param, $method, $datetime)
+    protected function setAuthorization($uri, $queryString, $bodyParams, $method, $datetime)
     {
-        $region = $this->region;
-        $short_date = substr($datetime, 0, 8);
+        $shortDate = substr($datetime, 0, 8);
         $service = 'execute-api';
-        $sign_header = 'host;user-agent;x-amz-access-token;x-amz-date';
-        $param_sign = "$method\n";
-        $param_sign .= "$api_uri\n";
-        $param_sign .= "$query_string\n";
-        $param_sign .= "host:" . $this->endpoint . "\n";
-        $param_sign .= "user-agent:" . self::USER_AGENT . "\n";
-        $param_sign .= "x-amz-access-token:" . $this->accessToken . "\n";
-        $param_sign .= "x-amz-date:{$datetime}\n";
-        $param_sign .= "\n";
-        $param_sign .= "$sign_header\n";
-        $param_sign .= hash('sha256', $body_param);
-        $param_sign = hash('sha256', $param_sign);
-        $scope = $this->createScope($short_date, $region, $service);
-        $k_signing = $this->getSigningKey($short_date, $region, $service, $this->secretAccessKey);
-        $string_sign = sprintf("AWS4-HMAC-SHA256\n%s\n%s\n%s", $datetime, $scope, $param_sign);
-        $signature = hash_hmac('sha256', $string_sign, $k_signing);
-        $authorization = sprintf('AWS4-HMAC-SHA256 Credential=%s/%s, SignedHeaders=%s, Signature=%s', $this->accessKeyId, $scope, $sign_header, $signature);
+        $signHeader = 'host;user-agent;x-amz-date';
+        $paramSign = "$method\n";
+        $paramSign .= "$uri\n";
+        $paramSign .= "$queryString\n";
+        $paramSign .= "host:" . $this->endpoint . "\n";
+        $paramSign .= "user-agent:" . self::USER_AGENT . "\n";
+        $paramSign .= "x-amz-date:{$datetime}\n";
+        $paramSign .= "\n";
+        $paramSign .= "$signHeader\n";
+        $paramSign .= hash('sha256', $bodyParams);
+        $paramSign = hash('sha256', $paramSign);
+        $scope = $this->createScope($shortDate, $this->region, $service);
+        $kSigning = $this->getSigningKey($shortDate, $this->region, $service, $this->secretAccessKey);
+        $stringSign = sprintf("AWS4-HMAC-SHA256\n%s\n%s\n%s", $datetime, $scope, $paramSign);
+        $signature = hash_hmac('sha256', $stringSign, $kSigning);
+        $authorization = sprintf('AWS4-HMAC-SHA256 Credential=%s/%s, SignedHeaders=%s, Signature=%s', $this->accessKeyId, $scope, $signHeader, $signature);
         return $authorization;
     }
 
-    protected function createScope($short_date, $region, $service)
+    protected function createScope($shortDate, $region, $service)
     {
-        return "$short_date/$region/$service/aws4_request";
+        return "$shortDate/$region/$service/aws4_request";
     }
 
-    protected function getSigningKey($short_date, $region, $service, $secret_key)
+    protected function getSigningKey($shortDate, $region, $service, $secretKey)
     {
-        $k_date = hash_hmac('sha256', $short_date, 'AWS4' . $secret_key, true);
-        $k_region = hash_hmac('sha256', $region, $k_date, true);
-        $k_service = hash_hmac('sha256', $service, $k_region, true);
-        $k_signing = hash_hmac('sha256', 'aws4_request', $k_service, true);
-        return $k_signing;
+        return hash_hmac('sha256', 'aws4_request', hash_hmac('sha256', $service,
+            hash_hmac('sha256', $region, hash_hmac('sha256', $shortDate, 'AWS4' . $secretKey, true), true),
+            true), true);
     }
 
     public function getSessionToken($accessKey, $secretKey, $roleArn, $durationSeconds = 3600)
@@ -202,7 +203,7 @@ class AmazonSellingPartnerApi
                 'Version' => '2011-06-15'
             ];
             ksort($param);
-            $query_param = http_build_query($param);
+            $queryParam = http_build_query($param);
             $host = 'sts.amazonaws.com';
             $datetime = gmdate('Ymd\THis\Z');
             $headers = [
@@ -210,12 +211,12 @@ class AmazonSellingPartnerApi
                 'Host: ' . $host,
                 'X-Amz-Date: ' . $datetime,
             ];
-            $headers[] = 'Authorization: ' . $this->setAuthorizationSession($query_param, $datetime, $host, $accessKey, $secretKey);
+            $headers[] = 'Authorization: ' . $this->setAuthorizationSession($queryParam, $datetime, $host, $accessKey, $secretKey);
             $this->curlOption = [];
             $this->curlOption[CURLOPT_CUSTOMREQUEST] = 'GET';
-            $json_data = [];
-            $api_url = sprintf('https://%s/?%s', $host, $query_param);
-            $response = $this->curlRequest($api_url, $json_data, $headers, $this->curlOption);
+            $jsonData = [];
+            $apiUrl = sprintf('https://%s/?%s', $host, $queryParam);
+            $response = $this->curlRequest($apiUrl, $jsonData, $headers, $this->curlOption);
             $res = simplexml_load_string($response['data'], 'SimpleXMLElement', LIBXML_NOCDATA);
             $data = json_decode(json_encode($res), true, 512, JSON_BIGINT_AS_STRING);
             $response['data'] = is_array($data) ? $data : $response['data'];
@@ -228,28 +229,27 @@ class AmazonSellingPartnerApi
         return $response;
     }
 
-    protected function setAuthorizationSession($query_param, $datetime, $host, $accessKey, $secretKey)
+    protected function setAuthorizationSession($queryParam, $datetime, $host, $accessKey, $secretKey)
     {
-        $region = $this->region;
         $service = 'sts';
-        $short_date = substr($datetime, 0, 8);
-        $query_str = '';
-        $query_str = hash('sha256', $query_str);
-        $sign_header = 'host;x-amz-date';
-        $param_sign = "GET\n";
-        $param_sign .= "/\n";
-        $param_sign .= "{$query_param}\n";
-        $param_sign .= "host:" . $host . "\n";
-        $param_sign .= "x-amz-date:" . $datetime . "\n";
-        $param_sign .= "\n";
-        $param_sign .= "{$sign_header}\n";
-        $param_sign .= $query_str;
-        $param_sign = hash('sha256', $param_sign);
-        $scope = $this->createScope($short_date, $region, $service);
-        $k_signing = $this->getSigningKey($short_date, $region, $service, $secretKey);
-        $string_sign = sprintf("AWS4-HMAC-SHA256\n%s\n%s\n%s", $datetime, $scope, $param_sign);
-        $signature = hash_hmac('sha256', $string_sign, $k_signing);
-        $authorization = sprintf('AWS4-HMAC-SHA256 Credential=%s/%s, SignedHeaders=%s, Signature=%s', $accessKey, $scope, $sign_header, $signature);
+        $shortDate = substr($datetime, 0, 8);
+        $queryStr = '';
+        $queryStr = hash('sha256', $queryStr);
+        $signHeader = 'host;x-amz-date';
+        $paramSign = "GET\n";
+        $paramSign .= "/\n";
+        $paramSign .= "{$queryParam}\n";
+        $paramSign .= "host:" . $host . "\n";
+        $paramSign .= "x-amz-date:" . $datetime . "\n";
+        $paramSign .= "\n";
+        $paramSign .= "{$signHeader}\n";
+        $paramSign .= $queryStr;
+        $paramSign = hash('sha256', $paramSign);
+        $scope = $this->createScope($shortDate, $this->region, $service);
+        $kSigning = $this->getSigningKey($shortDate, $this->region, $service, $secretKey);
+        $stringSign = sprintf("AWS4-HMAC-SHA256\n%s\n%s\n%s", $datetime, $scope, $paramSign);
+        $signature = hash_hmac('sha256', $stringSign, $kSigning);
+        $authorization = sprintf('AWS4-HMAC-SHA256 Credential=%s/%s, SignedHeaders=%s, Signature=%s', $accessKey, $scope, $signHeader, $signature);
         return $authorization;
     }
 
@@ -273,13 +273,13 @@ class AmazonSellingPartnerApi
         $ch = curl_init();
         curl_setopt_array($ch, $opts);
         $response = curl_exec($ch);
-        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $errno = curl_errno($ch);
         if (0 !== $errno) {
             $response = sprintf('[%s]: %s', $errno, curl_error($ch));
         }
         curl_close($ch);
-        return array('http_code' => $http_code, 'data' => $response);
+        return array('http_code' => $httpCode, 'data' => $response);
     }
 
 }
