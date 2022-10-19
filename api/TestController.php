@@ -4,6 +4,7 @@ namespace app\api;
 
 use app\core\lib\controller\Controller;
 use app\utils\HttpClient;
+use app\utils\LoggerUtil;
 
 class TestController extends Controller
 {
@@ -17,6 +18,13 @@ class TestController extends Controller
         $code = $httpClient->getHttpCode();
         $response = $httpClient->getResponse();
         print_r(['code' => $code, 'response' => $response]);
+    }
+
+    public function loggerTest()
+    {
+        $logger = LoggerUtil::getLogger('', 'a.log');
+        $logger = LoggerUtil::getLogger('', 'a.log');
+        $logger->log('xxxxxxxx');
     }
 
 }
