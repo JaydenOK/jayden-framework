@@ -4,8 +4,9 @@
 # 间隔 3s 取命令执行，此脚本每分钟执行:
 # * * * * * root /mnt/yibai_ac_system/appdal/smc/timer.sh > /dev/null 2>&1
 
-# 命令执行间隔duration
+# 命令执行间隔duration，duration最好设置能整除60，即: duration*times=60
 duration=3
+times=20
 
 minute=`date '+%M'`
 
@@ -39,7 +40,7 @@ function task() {
     echo "" > $lockFile
 }
 
-for (( i = 0; i < 20; i++ )); do
+for (( i = 0; i < $times; i++ )); do
     if [[ $minute != `date '+%M'` ]]; then
         echo "task exit"
         break
