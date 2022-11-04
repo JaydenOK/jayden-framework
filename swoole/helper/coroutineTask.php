@@ -3,7 +3,7 @@
 //Coroutine协程并发实例
 
 /**
- * 并发请求美客多接口，测试结果如下
+ * 并发请求亚马逊。虾皮电商平台接口，测试结果如下
  *
  * [root@ac_web yibai_ac_system]# php /mnt/yibai_ac_system/appdal/index.php swoole coroutineTask coroutineHttpServer
  *
