@@ -7,16 +7,16 @@
  *
  * [root@ac_web yibai_ac_system]# php /mnt/yibai_ac_system/appdal/index.php swoole coroutineTask coroutineHttpServer
  *
- * [root@ac_web yibai_ac_system]# curl "127.0.0.1:9503/?platform_code=Amazon&concurrency=5&total=200"
+ * [root@ac_web yibai_ac_system]# curl "127.0.0.1:9900/?platform_code=Amazon&concurrency=5&total=200"
  * {"taskCount":200,"concurrency":5,"useTime":"56s"}
  * [root@ac_web yibai_ac_system]#
- * [root@ac_web yibai_ac_system]# curl "127.0.0.1:9503/?platform_code=Amazon&concurrency=10&total=200"
+ * [root@ac_web yibai_ac_system]# curl "127.0.0.1:9900/?platform_code=Amazon&concurrency=10&total=200"
  * {"taskCount":200,"concurrency":10,"useTime":"28s"}
  * [root@ac_web yibai_ac_system]#
- * [root@ac_web yibai_ac_system]# curl "127.0.0.1:9503/?platform_code=Amazon&concurrency=20&total=200"
+ * [root@ac_web yibai_ac_system]# curl "127.0.0.1:9900/?platform_code=Amazon&concurrency=20&total=200"
  * {"taskCount":200,"concurrency":20,"useTime":"10s"}
  * [root@ac_web yibai_ac_system]#
- * [root@ac_web yibai_ac_system]# curl "127.0.0.1:9503/?platform_code=Amazon&concurrency=50&total=200"
+ * [root@ac_web yibai_ac_system]# curl "127.0.0.1:9900/?platform_code=Amazon&concurrency=50&total=200"
  * {"taskCount":200,"concurrency":50,"useTime":"6s"}
  * [root@ac_web yibai_ac_system]#
  */
@@ -30,7 +30,7 @@ class coroutineTask
     //Http Server + 协程 + channel 实现常驻进程并发，可控制并发数量，分批次执行，适用于要处理大量耗时的任务
     public function coroutineHttpServer()
     {
-        $httpServer = new Swoole\Http\Server("0.0.0.0", 9503, SWOOLE_BASE);
+        $httpServer = new Swoole\Http\Server("0.0.0.0", 9900, SWOOLE_BASE);
         $httpServer->on('request', function (Swoole\Http\Request $request, Swoole\Http\Response $response) {
             $concurrency = isset($request->get['concurrency']) ? (int)$request->get['concurrency'] : 5;  //并发数
             $total = isset($request->get['total']) ? (int)$request->get['total'] : 100;  //需总处理记录数
@@ -44,14 +44,11 @@ class coroutineTask
             /**
              * @var CI_DB_mysqli_driver $db
              */
-            $db = createDbConnection($dbServerKey, $key);
-            //查询出要处理的记录
-            $lists = $db->where('id<', 1000)->limit($total)->get('yibai_amazon_account')->result_array();
-            $db->close();
-            if (empty($lists)) {
+            $taskList = $this->getTaskList($platformCode, $total);
+            if (empty($taskList)) {
                 return $response->end('not task wait');
             }
-            $taskCount = count($lists);
+            $taskCount = count($taskList);
             $startTime = time();
             echo "task count:{$taskCount}" . PHP_EOL;
             $taskChan = new chan($taskCount);
@@ -59,10 +56,12 @@ class coroutineTask
             $producerChan = new chan($concurrency);
             $dataChan = new chan($total);
             for ($size = 1; $size <= $concurrency; $size++) {
-                $producerChan->push($size);
+                $producerChan->push(1);
             }
-            foreach ($lists as $account) {
-                $taskChan->push($account);
+            foreach ($taskList as $task) {
+                //增加当前任务类型标识
+                $task = array_merge($task, ['task_type' => $platformCode]);
+                $taskChan->push($task);
             }
             //创建生产者协程，投递任务
             //创建协程处理请求
@@ -76,30 +75,18 @@ class coroutineTask
                     }
                     //阻塞获取
                     $producerChan->pop();
-                    $account = $taskChan->pop();
-                    go(function () use ($producerChan, $dataChan, $account) {
-                        echo 'producer:' . $account['id'] . PHP_EOL;
-                        $id = $account['id'];
-                        $appId = $account['app_id'];
-                        $sellingPartnerId = $account['selling_partner_id'];
-                        //https://api.mercadolibre.com/oauth/token
-                        $host = 'api.mercadolibre.com';
-                        $cli = new Swoole\Coroutine\Http\Client($host, 443, true);
-                        $cli->set(['timeout' => 10]);
-                        $cli->setHeaders([
-                            'Host' => $host,
-                            "User-Agent" => 'Chrome/49.0.2587.3',
-                            'Accept' => 'text/html,application/json',
-                            'Accept-Encoding' => 'gzip',
-                        ]);
-                        $result = $cli->post('/oauth/token', []);
-                        echo 'deliver:' . $account['id'] . PHP_EOL;
-                        $result = $dataChan->push(['id' => $id, 'data' => $cli->body]);
-                        if ($result !== true) {
+                    $task = $taskChan->pop();
+                    go(function () use ($producerChan, $dataChan, $task) {
+                        echo 'producer:' . $task['id'] . PHP_EOL;
+                        $responseBody = $this->handleProducerByTask($task['task_type'], $task);
+                        echo 'deliver:' . $task['id'] . PHP_EOL;
+                        $pushStatus = $dataChan->push(['task_type' => $task['task_type'], 'id' => $task['id'], 'responseBody' => $responseBody]);
+                        if ($pushStatus !== true) {
                             echo 'push errCode:' . $dataChan->errCode . PHP_EOL;
                         }
+                        //处理完，恢复producerChan协程
                         $producerChan->push(1);
-                        echo "producer:{$account['id']} done" . PHP_EOL;
+                        echo "producer:{$task['id']} done" . PHP_EOL;
                     });
                 }
             });
@@ -107,24 +94,14 @@ class coroutineTask
             $db = createDbConnection($dbServerKey, $key);
             for ($i = 1; $i <= $taskCount; $i++) {
                 //阻塞，等待投递结果, 通道被关闭时，执行失败返回 false,
-                $result = $dataChan->pop();
-                echo "create consumer:{$result['id']} done" . PHP_EOL;
-                if ($result === false) {
+                $receiveData = $dataChan->pop();
+                if ($receiveData === false) {
                     echo 'pop errCode:' . $dataChan->errCode . PHP_EOL;
                     //退出
                     break;
                 }
-                echo 'receive:' . $result['id'] . PHP_EOL;
-                $id = $result['id'];
-                $data = $result['data'];
-                /**
-                 * 协程内，创建mysql连接新的实例
-                 * 由 &DB() 函数创建对应driver对象
-                 * @var CI_DB_mysqli_driver $db
-                 */
-                //处理业务逻辑
-                $db->where(['id' => $id])->set(['refresh_msg' => json_encode($data, 256), 'refresh_time' => date('Y-m-d H:i:s')])->update('yibai_amazon_account');
-                echo "consumer:{$result['id']} done" . PHP_EOL;
+                echo 'receive:' . $receiveData['id'] . PHP_EOL;
+                $this->handleConsumerByResponseData($receiveData['task_type'], $receiveData['id'], $receiveData['responseBody'], $db);
             }
             $db->close();
             //返回响应
@@ -133,6 +110,88 @@ class coroutineTask
             return $response->end(json_encode($return));
         });
         $httpServer->start();
+    }
+
+    //获取不同平台任务列表
+    public function getTaskList(string $platformCode, int $total)
+    {
+        $lists = [];
+        $dbServerKey = 'db_server_yibai_master';
+        $key = 'db_account_manage';
+        $db = createDbConnection($dbServerKey, $key);
+        //查询出要处理的记录
+        if ($platformCode == 'Amazon') {
+            $lists = $db->where('id<', 1000)->limit($total)->get('yibai_amazon_account')->result_array();
+        } else if ($platformCode == 'Shopee') {
+            $lists = $db->where('id<', 1000)->limit($total)->get('yibai_shopee_account')->result_array();
+        }
+        $db->close();
+        return $lists;
+    }
+
+    public function handleProducerByTask($taskType, $task)
+    {
+        $responseBody = null;
+        if ($taskType == 'Amazon') {
+            $id = $task['id'];
+            $appId = $task['app_id'];
+            $sellingPartnerId = $task['selling_partner_id'];
+            $host = 'api.amazon.com';
+            $path = '/auth/o2/token';
+            $data = [];
+            $data['grant_type'] = 'refresh_token';
+            $data['client_id'] = '111';
+            $data['client_secret'] = '222';
+            $data['refresh_token'] = '333';
+            $cli = new Swoole\Coroutine\Http\Client($host, 443, true);
+            $cli->set(['timeout' => 10]);
+            $cli->setHeaders([
+                'Host' => $host,
+                'grant_type' => 'refresh_token',
+                'client_id' => 'refresh_token',
+                "User-Agent" => 'Chrome/49.0.2587.3',
+                'Accept' => 'application/json',
+                'Content-Type' => 'application/x-www-form-urlencoded;charset=UTF-8',
+            ]);
+            $cli->post($path, http_build_query($data));
+            $responseBody = $cli->body;
+        } else if ($taskType == 'Shopee') {
+            $host = 'partner.shopeemobile.com';
+            $timestamp = time();
+            $path = '/api/v2/auth/access_token/get';
+            $sign = '111';
+            $data = [];
+            $data['partner_id'] = 111;
+            $data['refresh_token'] = '222';
+            $data['merchant_id'] = 333;
+            $path .= '?timestamp=' . $timestamp . '&sign=' . $sign . '&partner_id=' . $client_id;
+            $cli = new Swoole\Coroutine\Http\Client($host, 443, true);
+            $cli->set(['timeout' => 10]);
+            $cli->setHeaders([
+                'Host' => $host,
+                'Content-Type' => 'application/json;charset=UTF-8',
+            ]);
+            $data = [];
+            $cli->post($path, json_encode($data));
+            $responseBody = $cli->body;
+        }
+        return $responseBody;
+    }
+
+    public function handleConsumerByResponseData($taskType, $id, $responseBody, $db)
+    {
+        /**
+         * 协程内，创建mysql连接新的实例
+         * 由 &DB() 函数创建对应driver对象
+         * @var CI_DB_mysqli_driver $db
+         */
+        //处理业务逻辑
+        if ($taskType == 'Amazon') {
+            $db->where(['id' => $id])->set(['refresh_msg' => json_encode($responseBody, 256), 'refresh_time' => date('Y-m-d H:i:s')])->update('yibai_amazon_account');
+        } else if ($taskType == 'Shopee') {
+            $db->where(['id' => $id])->set(['refresh_msg' => json_encode($responseBody, 256), 'refresh_time' => date('Y-m-d H:i:s')])->update('yibai_shopee_account');
+        }
+        echo "consumer:{$id} done" . PHP_EOL;
     }
 
 
