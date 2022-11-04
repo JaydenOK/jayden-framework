@@ -5,7 +5,7 @@
 /**
  * 并发请求美客多接口，测试结果如下
  *
- * [root@ac_web yibai_ac_system]# php /mnt/yibai_ac_system/appdal/index.php swoole coroutineTask httpServerTask
+ * [root@ac_web yibai_ac_system]# php /mnt/yibai_ac_system/appdal/index.php swoole coroutineTask coroutineHttpServer
  *
  * [root@ac_web yibai_ac_system]# curl "127.0.0.1:9503/?platform_code=Amazon&concurrency=5&total=200"
  * {"taskCount":200,"concurrency":5,"useTime":"56s"}
@@ -28,7 +28,7 @@ class coroutineTask
 {
 
     //Http Server + 协程 + channel 实现常驻进程并发，可控制并发数量，分批次执行，适用于要处理大量耗时的任务
-    public function httpServerTask()
+    public function coroutineHttpServer()
     {
         $httpServer = new Swoole\Http\Server("0.0.0.0", 9503, SWOOLE_BASE);
         $httpServer->on('request', function (Swoole\Http\Request $request, Swoole\Http\Response $response) {
