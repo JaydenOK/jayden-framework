@@ -1,9 +1,11 @@
 <?php
 
-//Coroutine协程实例
+//Coroutine协程并发实例
 
 /**
  * 并发请求美客多接口，测试结果如下
+ *
+ * [root@ac_web yibai_ac_system]# php /mnt/yibai_ac_system/appdal/index.php swoole coroutineTask httpServerTask
  *
  * [root@ac_web yibai_ac_system]# curl "127.0.0.1:9503/?platform_code=Amazon&concurrency=5&total=200"
  * {"taskCount":200,"concurrency":5,"useTime":"56s"}
