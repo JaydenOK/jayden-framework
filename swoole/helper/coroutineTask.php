@@ -1,24 +1,24 @@
 <?php
-
-//Coroutine协程并发实例
-
 /**
+ * Coroutine协程并发实例
+ *
+ * 常驻监听进程启动，Http Server + 协程 + channel 实现并发处理，可控制并发数量，分批次执行任务，适用于内部系统要处理大量耗时的任务
+ *
  * 并发请求亚马逊。虾皮电商平台接口，测试结果如下
  *
- * [root@ac_web yibai_ac_system]# php /mnt/yibai_ac_system/appdal/index.php swoole coroutineTask coroutineHttpServer
+ * [root@ac_web yibai_ac_system]# php /mnt/yibai_ac_system/appdal/index.php swoole coroutineTask run
  *
  * [root@ac_web yibai_ac_system]# curl "127.0.0.1:9900/?task_type=Amazon&concurrency=5&total=200"
  * {"taskCount":200,"concurrency":5,"useTime":"56s"}
- * [root@ac_web yibai_ac_system]#
+ *
  * [root@ac_web yibai_ac_system]# curl "127.0.0.1:9900/?task_type=Amazon&concurrency=10&total=200"
  * {"taskCount":200,"concurrency":10,"useTime":"28s"}
- * [root@ac_web yibai_ac_system]#
+ *
  * [root@ac_web yibai_ac_system]# curl "127.0.0.1:9900/?task_type=Amazon&concurrency=20&total=200"
  * {"taskCount":200,"concurrency":20,"useTime":"10s"}
- * [root@ac_web yibai_ac_system]#
+ *
  * [root@ac_web yibai_ac_system]# curl "127.0.0.1:9900/?task_type=Amazon&concurrency=50&total=200"
  * {"taskCount":200,"concurrency":50,"useTime":"6s"}
- * [root@ac_web yibai_ac_system]#
  */
 
 use end\modules\common\models\AmazonAccountModel;
@@ -27,8 +27,8 @@ use end\modules\common\models\AmazonSiteModel;
 class coroutineTask
 {
 
-    //Http Server + 协程 + channel 实现常驻进程并发，可控制并发数量，分批次执行，适用于内部服务要处理大量耗时的任务
-    public function coroutineHttpServer()
+
+    public function run($params)
     {
         $taskType = isset($params['task_type']) ? (string)$params['task_type'] : 'Amazon';
         $port = isset($params['port']) ? (string)$params['port'] : 9900;
@@ -207,63 +207,5 @@ class coroutineTask
         echo "consumer:{$id} done" . PHP_EOL;
     }
 
-
-    public function demo2(array $params)
-    {
-        //一键协程化
-        Swoole\Runtime::enableCoroutine(SWOOLE_HOOK_ALL);
-        //所有的协程必须在协程容器里面创建，Swoole 程序启动的时候大部分情况会自动创建协程容器，其他直接裸写协程的方式启动程序，需要先创建一个协程容器 (Coroutine\run() 函数
-        Swoole\Coroutine\Run(function () {
-            $total = isset($params['limit']) && !empty($params['total']) ? (int)$params['total'] : 100;
-            $id = isset($params['id']) && !empty($params['id']) ? $params['id'] : '';
-            $dbServerKey = 'db_server_yibai_master';
-            $key = 'db_account_manage';
-            $db = createDbConnection($dbServerKey, $key);
-            //查询出要处理的记录
-            $lists = $db->where('id<', 1000)->limit($total)->get('yibai_amazon_account')->result_array();
-            if (empty($lists)) {
-                return 'not task wait';
-            }
-            echo date('[Y-m-d H:i:s]') . 'total:' . count($lists) . print_r(array_column($lists, 'id'), true) . PHP_EOL;
-            $batchRunNum = 10;
-            $batchAccountList = array_chunk($lists, $batchRunNum);
-            foreach ($batchAccountList as $key => $accountList) {
-                $result = [];
-                //分批次执行
-                $wg = new Swoole\Coroutine\WaitGroup();
-                foreach ($accountList as $account) {
-                    echo date('[Y-m-d H:i:s]') . "id: {$account['id']},running" . PHP_EOL;
-                    // 增加计数
-                    $wg->add();
-                    //父子协程优先级
-                    //优先执行子协程 (即 go() 里面的逻辑)，直到发生协程 yield(co::sleep 处)，然后协程调度到外层协程
-                    go(function () use ($wg, &$result, $account) {
-                        //启动一个协程客户端client
-                        $cli = new Swoole\Coroutine\Http\Client('api.amazon.com', 443, true);
-                        $cli->setHeaders([
-                            'Host' => 'api.amazon.com',
-                            'User-Agent' => 'Chrome/49.0.2587.3',
-                            'Accept' => 'text/html,application/xhtml+xml,application/xml',
-                            'Accept-Encoding' => 'gzip',
-                        ]);
-                        $cli->set(['timeout' => 1]);
-                        $cli->setMethod('POST');
-                        $cli->get('/auth/o2/token');
-                        $result[] = $cli->body;
-                        $cli->close();
-                        //完成减少计数
-                        $wg->done();
-                    });
-                }
-                // 主协程等待，挂起当前协程，等待所有任务完成后恢复当前协程的执行
-                $wg->wait();
-                foreach ($result as $item) {
-                    $id = $item['id'];
-                    echo date('[Y-m-d H:i:s]') . "id: {$id} done,result:" . json_encode($item, 256) . PHP_EOL;
-                }
-            }
-        });
-        return 'finish';
-    }
 
 }
