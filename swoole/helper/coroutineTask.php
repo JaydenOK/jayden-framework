@@ -7,16 +7,16 @@
  *
  * [root@ac_web yibai_ac_system]# php /mnt/yibai_ac_system/appdal/index.php swoole coroutineTask coroutineHttpServer
  *
- * [root@ac_web yibai_ac_system]# curl "127.0.0.1:9900/?platform_code=Amazon&concurrency=5&total=200"
+ * [root@ac_web yibai_ac_system]# curl "127.0.0.1:9900/?task_type=Amazon&concurrency=5&total=200"
  * {"taskCount":200,"concurrency":5,"useTime":"56s"}
  * [root@ac_web yibai_ac_system]#
- * [root@ac_web yibai_ac_system]# curl "127.0.0.1:9900/?platform_code=Amazon&concurrency=10&total=200"
+ * [root@ac_web yibai_ac_system]# curl "127.0.0.1:9900/?task_type=Amazon&concurrency=10&total=200"
  * {"taskCount":200,"concurrency":10,"useTime":"28s"}
  * [root@ac_web yibai_ac_system]#
- * [root@ac_web yibai_ac_system]# curl "127.0.0.1:9900/?platform_code=Amazon&concurrency=20&total=200"
+ * [root@ac_web yibai_ac_system]# curl "127.0.0.1:9900/?task_type=Amazon&concurrency=20&total=200"
  * {"taskCount":200,"concurrency":20,"useTime":"10s"}
  * [root@ac_web yibai_ac_system]#
- * [root@ac_web yibai_ac_system]# curl "127.0.0.1:9900/?platform_code=Amazon&concurrency=50&total=200"
+ * [root@ac_web yibai_ac_system]# curl "127.0.0.1:9900/?task_type=Amazon&concurrency=50&total=200"
  * {"taskCount":200,"concurrency":50,"useTime":"6s"}
  * [root@ac_web yibai_ac_system]#
  */
@@ -27,102 +27,115 @@ use end\modules\common\models\AmazonSiteModel;
 class coroutineTask
 {
 
-    //Http Server + 协程 + channel 实现常驻进程并发，可控制并发数量，分批次执行，适用于要处理大量耗时的任务
+    //Http Server + 协程 + channel 实现常驻进程并发，可控制并发数量，分批次执行，适用于内部服务要处理大量耗时的任务
     public function coroutineHttpServer()
     {
-        $httpServer = new Swoole\Http\Server("0.0.0.0", 9900, SWOOLE_BASE);
+        $taskType = isset($params['task_type']) ? (string)$params['task_type'] : 'Amazon';
+        $port = isset($params['port']) ? (string)$params['port'] : 9900;
+        if (empty($taskType) || empty($port)) {
+            return 'params not support';
+        }
+        $httpServer = new Swoole\Http\Server("0.0.0.0", $port, SWOOLE_BASE);
+        //开启内置协程，默认开启
+        //当 enable_coroutine 设置为 true 时，底层自动在 onRequest 回调中创建协程，开发者无需自行使用 go 函数创建协程
+        //当 enable_coroutine 设置为 false 时，底层不会自动创建协程，开发者如果要使用协程，必须使用 go 自行创建协程
+        $httpServer->set(['enable_coroutine' => true]);
         $httpServer->on('request', function (Swoole\Http\Request $request, Swoole\Http\Response $response) {
-            $concurrency = isset($request->get['concurrency']) ? (int)$request->get['concurrency'] : 5;  //并发数
-            $total = isset($request->get['total']) ? (int)$request->get['total'] : 100;  //需总处理记录数
-            $platformCode = isset($request->get['platform_code']) ? (string)$request->get['platform_code'] : '';
-            if ($concurrency <= 0 || empty($platformCode)) {
-                return $response->end('error params');
-            }
-            //数据库配置信息
-            $dbServerKey = 'db_server_yibai_master';
-            $key = 'db_account_manage';
-            /**
-             * @var CI_DB_mysqli_driver $db
-             */
-            $taskList = $this->getTaskList($platformCode, $total);
-            if (empty($taskList)) {
-                return $response->end('not task wait');
-            }
-            $taskCount = count($taskList);
-            $startTime = time();
-            echo "task count:{$taskCount}" . PHP_EOL;
-            $taskChan = new chan($taskCount);
-            //初始化并发数量
-            $producerChan = new chan($concurrency);
-            $dataChan = new chan($total);
-            for ($size = 1; $size <= $concurrency; $size++) {
-                $producerChan->push(1);
-            }
-            foreach ($taskList as $task) {
-                //增加当前任务类型标识
-                $task = array_merge($task, ['task_type' => $platformCode]);
-                $taskChan->push($task);
-            }
-            //创建生产者协程，投递任务
-            //创建协程处理请求
-            go(function () use ($taskChan, $producerChan, $dataChan) {
-                while (true) {
-                    $chanStatsArr = $taskChan->stats(); //queue_num 通道中的元素数量
-                    if (!isset($chanStatsArr['queue_num']) || $chanStatsArr['queue_num'] == 0) {
-                        //queue_num 通道中的元素数量
-                        echo 'chanStats:' . print_r($chanStatsArr, true) . PHP_EOL;
+            try {
+                $concurrency = isset($request->get['concurrency']) ? (int)$request->get['concurrency'] : 5;  //并发数
+                $total = isset($request->get['total']) ? (int)$request->get['total'] : 100;  //需总处理记录数
+                $taskType = isset($request->get['task_type']) ? (string)$request->get['task_type'] : '';  //任务类型
+                if ($concurrency <= 0 || empty($taskType)) {
+                    return $response->end('error params');
+                }
+                //数据库配置信息
+                $dbServerKey = 'db_server_yibai_master';
+                $key = 'db_account_manage';
+                /**
+                 * @var CI_DB_mysqli_driver $db
+                 */
+                $taskList = $this->getTaskList($taskType, $total);
+                if (empty($taskList)) {
+                    return $response->end('not task wait');
+                }
+                $taskCount = count($taskList);
+                $startTime = time();
+                echo "task count:{$taskCount}" . PHP_EOL;
+                $taskChan = new chan($taskCount);
+                //初始化并发数量
+                $producerChan = new chan($concurrency);
+                $dataChan = new chan($total);
+                for ($size = 1; $size <= $concurrency; $size++) {
+                    $producerChan->push(1);
+                }
+                foreach ($taskList as $task) {
+                    //增加当前任务类型标识
+                    $task = array_merge($task, ['task_type' => $taskType]);
+                    $taskChan->push($task);
+                }
+                //创建生产者协程，投递任务
+                //创建协程处理请求
+                go(function () use ($taskChan, $producerChan, $dataChan) {
+                    while (true) {
+                        $chanStatsArr = $taskChan->stats(); //queue_num 通道中的元素数量
+                        if (!isset($chanStatsArr['queue_num']) || $chanStatsArr['queue_num'] == 0) {
+                            //queue_num 通道中的元素数量
+                            echo 'chanStats:' . print_r($chanStatsArr, true) . PHP_EOL;
+                            break;
+                        }
+                        //阻塞获取
+                        $producerChan->pop();
+                        $task = $taskChan->pop();
+                        go(function () use ($producerChan, $dataChan, $task) {
+                            echo 'producer:' . $task['id'] . PHP_EOL;
+                            $responseBody = $this->handleProducerByTask($task['task_type'], $task);
+                            echo 'deliver:' . $task['id'] . PHP_EOL;
+                            $pushStatus = $dataChan->push(['task_type' => $task['task_type'], 'id' => $task['id'], 'responseBody' => $responseBody]);
+                            if ($pushStatus !== true) {
+                                echo 'push errCode:' . $dataChan->errCode . PHP_EOL;
+                            }
+                            //处理完，恢复producerChan协程
+                            $producerChan->push(1);
+                            echo "producer:{$task['id']} done" . PHP_EOL;
+                        });
+                    }
+                });
+                //消费数据
+                $db = createDbConnection($dbServerKey, $key);
+                for ($i = 1; $i <= $taskCount; $i++) {
+                    //阻塞，等待投递结果, 通道被关闭时，执行失败返回 false,
+                    $receiveData = $dataChan->pop();
+                    if ($receiveData === false) {
+                        echo 'pop errCode:' . $dataChan->errCode . PHP_EOL;
+                        //退出
                         break;
                     }
-                    //阻塞获取
-                    $producerChan->pop();
-                    $task = $taskChan->pop();
-                    go(function () use ($producerChan, $dataChan, $task) {
-                        echo 'producer:' . $task['id'] . PHP_EOL;
-                        $responseBody = $this->handleProducerByTask($task['task_type'], $task);
-                        echo 'deliver:' . $task['id'] . PHP_EOL;
-                        $pushStatus = $dataChan->push(['task_type' => $task['task_type'], 'id' => $task['id'], 'responseBody' => $responseBody]);
-                        if ($pushStatus !== true) {
-                            echo 'push errCode:' . $dataChan->errCode . PHP_EOL;
-                        }
-                        //处理完，恢复producerChan协程
-                        $producerChan->push(1);
-                        echo "producer:{$task['id']} done" . PHP_EOL;
-                    });
+                    echo 'receive:' . $receiveData['id'] . PHP_EOL;
+                    $this->handleConsumerByResponseData($receiveData['task_type'], $receiveData['id'], $receiveData['responseBody'], $db);
                 }
-            });
-            //消费数据
-            $db = createDbConnection($dbServerKey, $key);
-            for ($i = 1; $i <= $taskCount; $i++) {
-                //阻塞，等待投递结果, 通道被关闭时，执行失败返回 false,
-                $receiveData = $dataChan->pop();
-                if ($receiveData === false) {
-                    echo 'pop errCode:' . $dataChan->errCode . PHP_EOL;
-                    //退出
-                    break;
-                }
-                echo 'receive:' . $receiveData['id'] . PHP_EOL;
-                $this->handleConsumerByResponseData($receiveData['task_type'], $receiveData['id'], $receiveData['responseBody'], $db);
+                $db->close();
+                //返回响应
+                $endTime = time();
+                $return = ['taskCount' => $taskCount, 'concurrency' => $concurrency, 'useTime' => ($endTime - $startTime) . 's'];
+                return $response->end(json_encode($return));
+            } catch (Swoole\ExitException $e) {
+                return $response->end(json_encode($e->getMessage()));
             }
-            $db->close();
-            //返回响应
-            $endTime = time();
-            $return = ['taskCount' => $taskCount, 'concurrency' => $concurrency, 'useTime' => ($endTime - $startTime) . 's'];
-            return $response->end(json_encode($return));
         });
         $httpServer->start();
     }
 
     //获取不同平台任务列表
-    public function getTaskList(string $platformCode, int $total)
+    public function getTaskList(string $taskType, int $total)
     {
         $lists = [];
         $dbServerKey = 'db_server_yibai_master';
         $key = 'db_account_manage';
         $db = createDbConnection($dbServerKey, $key);
         //查询出要处理的记录
-        if ($platformCode == 'Amazon') {
+        if ($taskType == 'Amazon') {
             $lists = $db->where('id<', 1000)->limit($total)->get('yibai_amazon_account')->result_array();
-        } else if ($platformCode == 'Shopee') {
+        } else if ($taskType == 'Shopee') {
             $lists = $db->where('id<', 1000)->limit($total)->get('yibai_shopee_account')->result_array();
         }
         $db->close();
