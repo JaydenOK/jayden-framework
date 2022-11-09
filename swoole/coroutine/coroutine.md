@@ -7,3 +7,9 @@ Coroutine\Scheduler
 参考这两个模块构造函数的 enable_coroutine 参数。
 其他直接裸写协程的方式启动程序，需要先创建一个协程容器 (Coroutine\run() 函数，可以理解为 java、c 的 main 函数)，例如：
 ```
+
+```
+安装压测工具
+yum -y install httpd-tools
+
+```
