@@ -19,6 +19,9 @@
  *
  * [root@ac_web yibai_ac_system]# curl "127.0.0.1:9900/?task_type=Amazon&concurrency=50&total=200"
  * {"taskCount":200,"concurrency":50,"useTime":"6s"}
+ *
+ * [root@ac_web yibai_ac_system]# curl "127.0.0.1:9900/?task_type=Amazon&concurrency=200&total=500"
+ * {"taskCount":500,"concurrency":200,"useTime":"3s"}
  */
 
 use end\modules\common\models\AmazonAccountModel;
