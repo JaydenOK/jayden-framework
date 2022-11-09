@@ -65,14 +65,13 @@
 
 class coroutineTask3
 {
-
-    //PdoMysql连接池，协程支持并发访问请求接口
     /**
      * @var \Swoole\Database\PDOPool
      */
     protected $pdoPool;
 
-    public function run(array $params = [])
+    //PdoMysql连接池，协程支持并发访问请求接口
+    public function test3(array $params = [])
     {
         $httpServer = new Swoole\Http\Server("0.0.0.0", 9901, SWOOLE_BASE);
         $httpServer->on('WorkerStart', function (Swoole\Server $server, int $workerId) {
@@ -86,18 +85,18 @@ class coroutineTask3
             echo 'WorkerStop pdo pool close:' . $workerId . PHP_EOL;
         });
         $httpServer->on('request', function (Swoole\Http\Request $request, Swoole\Http\Response $response) {
-            $pdo = $this->pdoPool->get();
-            defer(function () use ($pdo) {
-                $this->pdoPool->put($pdo);
-            });
-            $limit = $request->get['limit'] ?? 500;
+            $limit = $request->get['limit'] ?? 200;
             $type = $request->get['type'] ?? 'Amazon';
             $uid = mt_rand();
             $return = [];
             $wg = new Swoole\Coroutine\WaitGroup();
             $wg->add(2);
-            go(function () use ($wg, $pdo, $limit, $type, &$return) {
+            go(function () use ($wg, $limit, $type, &$return) {
                 try {
+                    $pdo = $this->pdoPool->get();
+                    defer(function () use ($pdo) {
+                        $this->pdoPool->put($pdo);
+                    });
                     $sql = "select id,account_type,partner_id,account_real_name as account_s_name,created_time from yibai_amazon_account where account_type=:account_type limit {$limit}";
                     $PDOStatement = $pdo->prepare($sql);
                     //$PDOStatement->setFetchMode(PDO::FETCH_ASSOC);
@@ -114,7 +113,7 @@ class coroutineTask3
                     //@todo test demo
                     //$this->addUserLog();
                     //$this->sendUserMsg();
-                    Swoole\Coroutine::sleep(2);
+                    Swoole\Coroutine::sleep(1);
                 } catch (Exception $e) {
 
                 }
@@ -134,7 +133,7 @@ class coroutineTask3
         include(APPPATH . 'config/database.php');
         $dbConfig = $db[$dbServerKey];
         $dbConfig['port'] = 3306;
-        //当前使用swoole v4.5.11（Swoole 从 v4.4.13 版本开始提供了内置协程连接池，swoole 4.6+不再支持php7.1）
+        //Swoole 从 v4.4.13 版本开始提供了内置协程连接池，（使用swoole v4.5.11，还支持php7.1）
         $pdoConfig = (new Swoole\Database\PDOConfig())
             ->withHost($dbConfig['hostname'])
             ->withPort($dbConfig['port'])
@@ -143,7 +142,7 @@ class coroutineTask3
             ->withCharset($dbConfig['char_set'])
             ->withUsername($dbConfig['username'])
             ->withPassword($dbConfig['password']);
-        $pool = new Swoole\Database\PDOPool($pdoConfig, 64);
+        $pool = new Swoole\Database\PDOPool($pdoConfig, 128);
         return $pool;
     }
 
