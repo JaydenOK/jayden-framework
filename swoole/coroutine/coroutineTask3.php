@@ -113,7 +113,8 @@ class coroutineTask3
                     //@todo test demo
                     //$this->addUserLog();
                     //$this->sendUserMsg();
-                    Swoole\Coroutine::sleep(1);
+                    //模拟业务耗时100ms
+                    Swoole\Coroutine::sleep(0.1);
                 } catch (Exception $e) {
 
                 }
