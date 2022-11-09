@@ -30,7 +30,6 @@ use end\modules\common\models\AmazonSiteModel;
 class coroutineTask
 {
 
-
     public function run($params)
     {
         $taskType = isset($params['task_type']) ? (string)$params['task_type'] : 'Amazon';
@@ -38,6 +37,7 @@ class coroutineTask
         if (empty($taskType) || empty($port)) {
             return 'params not support';
         }
+        $this->renameProcessName("concurrency-task-{$taskType}");
         $httpServer = new Swoole\Http\Server("0.0.0.0", $port, SWOOLE_BASE);
         //开启内置协程，默认开启
         //当 enable_coroutine 设置为 true 时，底层自动在 onRequest 回调中创建协程，开发者无需自行使用 go 函数创建协程
@@ -83,7 +83,7 @@ class coroutineTask
                         $chanStatsArr = $taskChan->stats(); //queue_num 通道中的元素数量
                         if (!isset($chanStatsArr['queue_num']) || $chanStatsArr['queue_num'] == 0) {
                             //queue_num 通道中的元素数量
-                            echo 'chanStats:' . print_r($chanStatsArr, true) . PHP_EOL;
+                            echo 'chanStats:' . json_encode($chanStatsArr, 256) . PHP_EOL;
                             break;
                         }
                         //阻塞获取
@@ -145,6 +145,7 @@ class coroutineTask
         return $lists;
     }
 
+    //任务处理程序
     public function handleProducerByTask($taskType, $task)
     {
         $responseBody = null;
@@ -180,7 +181,7 @@ class coroutineTask
             $data['partner_id'] = 111;
             $data['refresh_token'] = '222';
             $data['merchant_id'] = 333;
-            $path .= '?timestamp=' . $timestamp . '&sign=' . $sign . '&partner_id=' . $client_id;
+            $path .= '?timestamp=' . $timestamp . '&sign=' . $sign . '&partner_id=' . $data['partner_id'];
             $cli = new Swoole\Coroutine\Http\Client($host, 443, true);
             $cli->set(['timeout' => 10]);
             $cli->setHeaders([
@@ -210,5 +211,14 @@ class coroutineTask
         echo "consumer:{$id} done" . PHP_EOL;
     }
 
+    //当前进程重命名
+    protected function renameProcessName($processName)
+    {
+        if (function_exists('cli_set_process_title')) {
+            return cli_set_process_title($processName);
+        } else {
+            return swoole_set_process_name($processName);
+        }
+    }
 
 }
