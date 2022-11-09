@@ -120,6 +120,7 @@ class coroutineTask3
                 }
                 $wg->done();
             });
+            $wg->wait();
             return $response->end(json_encode($return));
         });
         $httpServer->start();
