@@ -4,62 +4,63 @@
  * 对外提供api高并发访问接口
  * 使用常驻监听进程，pdo-mysql连接池，多协程处理业务逻辑
  *
- * apache bench压测数据，总数10000，并发数1000，总耗时6.910秒，每个请求大概690.981秒
- * [root@localhost ~]# ab -n 10000 -c 1000 http://192.168.92.208:9901/?limit=200
- * This is ApacheBench, Version 2.3 <$Revision: 1430300 $>
- * Copyright 1996 Adam Twiss, Zeus Technology Ltd, http://www.zeustech.net/
- * Licensed to The Apache Software Foundation, http://www.apache.org/
- *
- * Benchmarking 192.168.92.208 (be patient)
- * Completed 1000 requests
- * Completed 2000 requests
- * Completed 3000 requests
- * Completed 4000 requests
- * Completed 5000 requests
- * Completed 6000 requests
- * Completed 7000 requests
- * Completed 8000 requests
- * Completed 9000 requests
- * Completed 10000 requests
- * Finished 10000 requests
- *
- *
- * Server Software:        swoole-http-server
- * Server Hostname:        192.168.92.208
- * Server Port:            9901
- *
- * Document Path:          /?limit=200
- * Document Length:        24483 bytes
- *
- * Concurrency Level:      1000
- * Time taken for tests:   6.910 seconds
- * Complete requests:      10000
- * Failed requests:        0
- * Write errors:           0
- * Total transferred:      246340000 bytes
- * HTML transferred:       244830000 bytes
- * Requests per second:    1447.22 [#/sec] (mean)
- * Time per request:       690.981 [ms] (mean)
- * Time per request:       0.691 [ms] (mean, across all concurrent requests)
- * Transfer rate:          34815.21 [Kbytes/sec] received
- *
- * Connection Times (ms)
- * min  mean[+/-sd] median   max
- * Connect:        0   53 313.5      2    3010
- * Processing:    16  215 215.5    153    3222
- * Waiting:        3  172 185.8    134    3220
- * Total:         45  269 441.8    155    6231
- *
- * Percentage of the requests served within a certain time (ms)
- * 50%    155
- * 66%    159
- * 75%    163
- * 80%    168
- * 90%    668
- * 95%    672
- * 98%   1159
- * 99%   2661
- * 100%   6231 (longest request)
+ * apache bench压测数据，总数10000，并发数1000，总耗时2.996秒，每个请求299.605ms
+[root@localhost ~]# ab -n 10000 -c 1000 http://192.168.92.208:9901/?limit=20
+This is ApacheBench, Version 2.3 <$Revision: 1430300 $>
+Copyright 1996 Adam Twiss, Zeus Technology Ltd, http://www.zeustech.net/
+Licensed to The Apache Software Foundation, http://www.apache.org/
+
+Benchmarking 192.168.92.208 (be patient)
+Completed 1000 requests
+Completed 2000 requests
+Completed 3000 requests
+Completed 4000 requests
+Completed 5000 requests
+Completed 6000 requests
+Completed 7000 requests
+Completed 8000 requests
+Completed 9000 requests
+Completed 10000 requests
+Finished 10000 requests
+
+
+Server Software:        swoole-http-server
+Server Hostname:        192.168.92.208
+Server Port:            9901
+
+Document Path:          /?limit=20
+Document Length:        2466 bytes
+
+Concurrency Level:      1000
+Time taken for tests:   2.996 seconds
+Complete requests:      10000
+Failed requests:        0
+Write errors:           0
+Total transferred:      26160000 bytes
+HTML transferred:       24660000 bytes
+Requests per second:    3337.73 [#/sec] (mean)
+Time per request:       299.605 [ms] (mean)
+Time per request:       0.300 [ms] (mean, across all concurrent requests)
+Transfer rate:          8526.86 [Kbytes/sec] received
+
+Connection Times (ms)
+min  mean[+/-sd] median   max
+Connect:        0   23 135.9      2    1007
+Processing:    16   95  94.9     69    1622
+Waiting:        1   75  84.3     59    1622
+Total:         33  118 184.3     71    2626
+
+Percentage of the requests served within a certain time (ms)
+50%     71
+66%     76
+75%     80
+80%     83
+90%    272
+95%    281
+98%    439
+99%   1072
+100%   2626 (longest request)
+
  *
  */
 
