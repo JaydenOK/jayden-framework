@@ -273,17 +273,23 @@ class RabbitMQClient
     }
 
     /**
-     * 消费者消费消息（阻塞模式）
+     * 消费者消费消息（阻塞模式），需要初始化交换机，传入exchangeName名称
      * @param callable $callback
      * @param $queueName
+     * @param string $exchangeName
+     * @param string $exchangeType
      * @throws AMQPChannelException
      * @throws AMQPConnectionException
      * @throws AMQPEnvelopeException
+     * @throws AMQPExchangeException
      * @throws AMQPQueueException
      */
-    public function consume(callable $callback, $queueName)
+    public function consume(callable $callback, $queueName, $exchangeName = '', $exchangeType = AMQP_EX_TYPE_DIRECT)
     {
         $this->setCallback($callback)->setQueueName($queueName);
+        if (!empty($exchangeName)) {
+            $this->setExchangeType($exchangeType)->setExchangeName($exchangeName)->handleExchange(true);
+        }
         $this->handleQueue(true);
         //阻塞消费
         $this->queue->consume(function (AMQPEnvelope $AMQPEnvelope, AMQPQueue $AMQPQueue) {
