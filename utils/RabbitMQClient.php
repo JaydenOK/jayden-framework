@@ -365,6 +365,9 @@ class RabbitMQClient
         if ($this->connection) {
             $this->connection->disconnect();
         }
+        if ($this->channel) {
+            $this->channel->close();
+        }
     }
 
     public function __destruct()
