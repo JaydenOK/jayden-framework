@@ -1,114 +1,89 @@
 <?php
+
 namespace module\lib;
 
 use PDO;
+use PDOException;
+use PDOStatement;
 
+/**
+ * 查询：
+ * $person = $db->query("SELECT * FROM Persons WHERE firstname = :firstname AND id = :id", array("firstname" => "John", "id" => "1"));
+ *
+ * 新增
+ * class User Extends Crud
+ * {
+ *     protected $table = 'user';
+ *     protected $pk = 'id';
+ * }
+ * $user = new User();
+ * $user->username = '新人';
+ * $user->guid = 'xxxx';
+ * $creation = $user->Create();
+ *
+ * $saved = $person->save();    //更新
+ *
+ * $saved = $person->delete();  //删除
+ *
+ * Class DB
+ * @package module\lib
+ */
 class DB
 {
-    # @object, The PDO object
     /**
      * @var PDO
      */
     private $pdo;
-
-    # @object, PDO statement object
+    /**
+     * @var PDOStatement
+     */
     private $sQuery;
-
-    # @array,  The database settings
     private $settings;
-
-    # @bool ,  Connected to the database
     private $bConnected = false;
-
-    # @object, Object for logging exceptions	
     private $log;
-
-    # @array, The parameters of the SQL query
     private $parameters;
 
-    /**
-     *   Default Constructor
-     *
-     *    1. Instantiate Log class.
-     *    2. Connect to database.
-     *    3. Creates the parameter array.
-     */
-    public function __construct()
+    public function __construct($dbConfig = [])
     {
         $this->log = new Log();
-        $this->Connect();
+        $this->connect($dbConfig);
         $this->parameters = array();
     }
 
-    /**
-     *    This method makes connection to the database.
-     *
-     *    1. Reads the database settings from a ini file.
-     *    2. Puts  the ini content into the settings array.
-     *    3. Tries to connect to the database.
-     *    4. If connection failed, exception is displayed and a log file gets created.
-     */
-    private function Connect()
+    private function connect($dbConfig = [])
     {
-        $this->settings = include dirname(dirname(__FILE__)) . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'database.php';
+        if (!empty($dbConfig)) {
+            $this->settings = $dbConfig;
+        } else {
+            $this->settings = include dirname(dirname(__FILE__)) . DIRECTORY_SEPARATOR . 'config' . DIRECTORY_SEPARATOR . 'database.php';
+        }
         $dsn = "mysql:host={$this->settings['host']};port={$this->settings['port']};dbname={$this->settings['dbname']}";
         try {
-            # Read settings from INI file, set UTF8
             $this->pdo = new PDO($dsn, $this->settings["user"], $this->settings["password"], array(
                 PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES {$this->settings["charset"]}"
             ));
-
-            # We can now log any exceptions on Fatal error. 
             $this->pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-
-            # Disable emulation of prepared statements, use REAL prepared statements instead.
             $this->pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
-
-            # Connection succeeded, set the boolean to true.
             $this->bConnected = true;
         } catch (PDOException $e) {
-            # Write into log
-            echo $this->ExceptionLog($e->getMessage());
+            echo $this->exceptionLog($e->getMessage());
             die();
         }
     }
 
-    /*
-     *   You can use this little method if you want to close the PDO connection
-     *
-     */
-    public function CloseConnection()
+    public function closeConnection()
     {
-        # Set the PDO object to null to close the connection
-        # http://www.php.net/manual/en/pdo.connections.php
         $this->pdo = null;
     }
 
-    /**
-     *    Every method which needs to execute a SQL query uses this method.
-     *
-     *    1. If not connected, connect to the database.
-     *    2. Prepare Query.
-     *    3. Parameterize Query.
-     *    4. Execute Query.
-     *    5. On exception : Write Exception into the log + SQL query.
-     *    6. Reset the Parameters.
-     */
-    private function Init($query, $parameters = "")
+    private function init($query, $parameters = "")
     {
-        # Connect to database
         if (!$this->bConnected) {
-            $this->Connect();
+            $this->connect();
         }
         try {
-            # Prepare query
-            //@var PDOStatement
             $this->sQuery = $this->pdo->prepare($query);
-
-            # Add parameters to the parameter array	
             $this->bindMore($parameters);
-
-            # Bind parameters
             if (!empty($this->parameters)) {
                 foreach ($this->parameters as $param => $value) {
                     if (is_int($value[1])) {
@@ -120,41 +95,22 @@ class DB
                     } else {
                         $type = PDO::PARAM_STR;
                     }
-                    // Add type when binding the values to the column
                     $this->sQuery->bindValue($value[0], $value[1], $type);
                 }
             }
-
-            # Execute SQL 
             $this->sQuery->execute();
         } catch (PDOException $e) {
-            # Write into log and display Exception
-            echo $this->ExceptionLog($e->getMessage(), $query);
+            echo $this->exceptionLog($e->getMessage(), $query);
             die();
         }
-
-        # Reset the parameters
         $this->parameters = array();
     }
 
-    /**
-     * @void
-     *
-     *    Add the parameter to the parameter array
-     * @param string $para
-     * @param string $value
-     */
     public function bind($para, $value)
     {
         $this->parameters[sizeof($this->parameters)] = [":" . $para, $value];
     }
 
-    /**
-     * @void
-     *
-     *    Add more parameters to the parameter array
-     * @param array $parray
-     */
     public function bindMore($parray)
     {
         if (empty($this->parameters) && is_array($parray)) {
@@ -165,26 +121,12 @@ class DB
         }
     }
 
-    /**
-     *  If the SQL query  contains a SELECT or SHOW statement it returns an array containing all of the result set row
-     *    If the SQL statement is a DELETE, INSERT, or UPDATE statement it returns the number of affected rows
-     *
-     * @param string $query
-     * @param array $params
-     * @param int $fetchmode
-     * @return mixed
-     */
     public function query($query, $params = null, $fetchmode = PDO::FETCH_ASSOC)
     {
         $query = trim(str_replace("\r", " ", $query));
-
-        $this->Init($query, $params);
-
+        $this->init($query, $params);
         $rawStatement = explode(" ", preg_replace("/\s+|\t+|\n+/", " ", $query));
-
-        # Which SQL statement is used 
         $statement = strtolower($rawStatement[0]);
-
         if ($statement === 'select' || $statement === 'show') {
             return $this->sQuery->fetchAll($fetchmode);
         } elseif ($statement === 'insert' || $statement === 'update' || $statement === 'delete') {
@@ -194,129 +136,70 @@ class DB
         }
     }
 
-    /**
-     *  Returns the last inserted id.
-     * @return string
-     */
     public function lastInsertId()
     {
         return $this->pdo->lastInsertId();
     }
 
-    /**
-     * Starts the transaction
-     * @return boolean, true on success or false on failure
-     */
     public function beginTransaction()
     {
         return $this->pdo->beginTransaction();
     }
 
-    /**
-     *  Execute Transaction
-     * @return boolean, true on success or false on failure
-     */
     public function executeTransaction()
     {
         return $this->pdo->commit();
     }
 
-    /**
-     *  Rollback of Transaction
-     * @return boolean, true on success or false on failure
-     */
     public function rollBack()
     {
         return $this->pdo->rollBack();
     }
 
-    /**
-     *    Returns an array which represents a column from the result set
-     *
-     * @param string $query
-     * @param array $params
-     * @return array
-     */
     public function column($query, $params = null)
     {
-        $this->Init($query, $params);
+        $this->init($query, $params);
         $Columns = $this->sQuery->fetchAll(PDO::FETCH_NUM);
-
         $column = null;
         foreach ($Columns as $cells) {
             $column[] = $cells[0];
         }
-
         return $column;
-
     }
 
-
-    /**
-     * @param $query
-     * @param null $params
-     * @return mixed
-     */
     public function fetchAll($query, $params = null)
     {
-        $this->Init($query, $params);
+        $this->init($query, $params);
         return $this->sQuery->fetchAll(PDO::FETCH_ASSOC);
-
     }
 
-    /**
-     *    Returns an array which represents a row from the result set
-     *
-     * @param string $query
-     * @param array $params
-     * @param int $fetchmode
-     * @return array
-     */
     public function row($query, $params = null, $fetchmode = PDO::FETCH_ASSOC)
     {
-        $this->Init($query, $params);
+        $this->init($query, $params);
         $result = $this->sQuery->fetch($fetchmode);
-        $this->sQuery->closeCursor(); // Frees up the connection to the server so that other SQL statements may be issued,
+        $this->sQuery->closeCursor();
         return $result;
     }
 
-    /**
-     *    Returns the value of one single field/column
-     *
-     * @param string $query
-     * @param array $params
-     * @return string
-     */
     public function single($query, $params = null)
     {
-        $this->Init($query, $params);
+        $this->init($query, $params);
         $result = $this->sQuery->fetchColumn();
-        $this->sQuery->closeCursor(); // Frees up the connection to the server so that other SQL statements may be issued
+        $this->sQuery->closeCursor();
         return $result;
     }
 
-    /**
-     * Writes the log and returns the exception
-     *
-     * @param string $message
-     * @param string $sql
-     * @return string
-     */
-    private function ExceptionLog($message, $sql = "")
+    private function exceptionLog($message, $sql = "")
     {
         $exception = 'Unhandled Exception. <br />';
         $exception .= $message;
         $exception .= "<br /> You can find the error back in the log.";
-
         if (!empty($sql)) {
-            # Add the Raw SQL to the Log
             $message .= "\r\nRaw SQL : " . $sql;
         }
-        # Write into log
         $this->log->write($message);
-
         return $exception;
     }
+
 }
 
-?>

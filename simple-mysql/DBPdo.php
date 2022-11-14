@@ -3,6 +3,9 @@
 class DBPdo
 {
 
+    /**
+     * @var Pdo
+     */
     public $pdo;
     private $error;
     private $config = ['host' => '', 'user' => '', 'password' => '', 'db' => ''];

@@ -1,7 +1,9 @@
 <?php
 
 
-$db = new Db();
+use module\lib\DB;
+
+$db = new DB();
 $persons = $db->query("SELECT * FROM persons");
 
 
@@ -43,11 +45,10 @@ class YourClass Extends Crud
 {
     protected $table = 'persons';
     protected $pk = 'id';
-
 }
 
 
-$person = new person();
+$person = new \module\model\User();
 
 $person->Firstname = "Kona";
 $person->Age = "20";
