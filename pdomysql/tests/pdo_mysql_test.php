@@ -1,5 +1,6 @@
 <?php
 
+
 //http://jayden.cc/pdomysql/tests/pdo_mysql_test.php
 
 //Add the following line in your composer.json file:
@@ -9,22 +10,10 @@
 //}
 //update your dependencies with composer update, and you're done!
 
+
 require '../bootstrap.php';
 
-$config = [
-    'host' => '192.168.92.209',
-    'user' => 'xxx',
-    'password' => 'yibai#2022',
-    'dbname' => 'yibai_account_system',
-    'port' => '3306',
-    'charset' => 'utf8',
-];
-
-$pdo = new PDO("mysql:dbname={$config['dbname']};host={$config['host']};charset={$config['charset']}", "{$config['user']}", "{$config['password']}");
-$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_WARNING);
-$pdo->setAttribute(PDO::ATTR_CASE, PDO::CASE_LOWER);
-$fluent = new module\FluentPDO\Query($pdo);
-
+$fluent = (new module\tests\PdoClient())->getQuery();
 
 //查询
 $query = $fluent->from('yibai_async_config')->where('id', 9)->fetch();

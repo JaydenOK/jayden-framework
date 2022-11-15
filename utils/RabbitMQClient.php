@@ -1,5 +1,7 @@
 <?php
 
+namespace module\lib;
+
 /**
  * RabbitMQClient PHP原生客户端实现方式工具 (AMQP协议)
  *
@@ -33,19 +35,20 @@
  * ##########################################################################################
  * Class RabbitMQClient
  */
+
 class RabbitMQClient
 {
     protected $mqConfig = [];
     /**
-     * @var AMQPConnection
+     * @var \AMQPConnection
      */
     protected $connection;
     /**
-     * @var AMQPChannel
+     * @var \AMQPChannel
      */
     protected $channel;
     /**
-     * @var AMQPExchange
+     * @var \AMQPExchange
      */
     protected $exchange;
     /**
@@ -55,7 +58,7 @@ class RabbitMQClient
     protected $exchangeType = AMQP_EX_TYPE_DIRECT;
     protected $routeKey;
     /**
-     * @var AMQPQueue
+     * @var \AMQPQueue
      */
     protected $queue;
     protected $queueName;
@@ -80,7 +83,7 @@ class RabbitMQClient
     /**
      * RabbitMQClient constructor.
      * @param array $config
-     * @throws Exception
+     * @throws \Exception
      */
     public function __construct($config = [])
     {
@@ -108,16 +111,16 @@ class RabbitMQClient
     }
 
     /**
-     * @throws Exception
+     * @throws \Exception
      */
     protected function connect()
     {
         try {
-            $this->connection = new AMQPConnection($this->mqConfig);
+            $this->connection = new \AMQPConnection($this->mqConfig);
             $this->connection->connect();
-            $this->channel = new AMQPChannel($this->connection);
-        } catch (AMQPConnectionException $e) {
-            throw new Exception('rabbitmq连接失败:' . $e->getMessage());
+            $this->channel = new \AMQPChannel($this->connection);
+        } catch (\AMQPConnectionException $e) {
+            throw new \Exception('rabbitmq连接失败:' . $e->getMessage());
         }
     }
 
@@ -174,16 +177,16 @@ class RabbitMQClient
     /**
      * 声明交换机
      * @param bool $autoCreate 不存在是否自动创建（持久化）
-     * @throws AMQPChannelException
-     * @throws AMQPConnectionException
-     * @throws AMQPExchangeException
+     * @throws \AMQPChannelException
+     * @throws \AMQPConnectionException
+     * @throws \AMQPExchangeException
      */
     private function handleExchange($autoCreate = false)
     {
         if (!$this->connection->isConnected()) {
-            throw new AMQPConnectionException('RabbitMQ is not connected.');
+            throw new \AMQPConnectionException('RabbitMQ is not connected.');
         }
-        $this->exchange = new AMQPExchange($this->channel);
+        $this->exchange = new \AMQPExchange($this->channel);
         $this->exchange->setName($this->exchangeName);
         $this->exchange->setType($this->exchangeType);
         $flags = $autoCreate ? AMQP_DURABLE : AMQP_PASSIVE;
@@ -195,16 +198,16 @@ class RabbitMQClient
      * 声明队列
      * @param bool $autoCreate 不存在是否自动创建（持久化）
      * @return $this
-     * @throws AMQPChannelException
-     * @throws AMQPConnectionException
-     * @throws AMQPQueueException
+     * @throws \AMQPChannelException
+     * @throws \AMQPConnectionException
+     * @throws \AMQPQueueException
      */
     private function handleQueue($autoCreate = false)
     {
         if (empty($this->queueName)) {
             return $this;
         }
-        $this->queue = new AMQPQueue($this->channel);
+        $this->queue = new \AMQPQueue($this->channel);
         $this->queue->setName($this->queueName);
         $flags = $autoCreate ? AMQP_DURABLE : AMQP_PASSIVE;
         $this->queue->setFlags($flags);
@@ -236,7 +239,7 @@ class RabbitMQClient
             $message = (is_array($message) || is_object($message)) ? json_encode($message, JSON_UNESCAPED_UNICODE) : $message;
             $result = $this->exchange->publish($message, $this->routeKey);
             return $result;
-        } catch (Exception $e) {
+        } catch (\Exception $e) {
             $this->errorMessage = $e->getMessage();
             return false;
         }
@@ -268,7 +271,7 @@ class RabbitMQClient
             $message = (is_array($message) || is_object($message)) ? json_encode($message, JSON_UNESCAPED_UNICODE) : $message;
             $result = $this->exchange->publish($message, '', AMQP_MANDATORY, ['delivery_mode' => 2]);
             return $result;
-        } catch (Exception $e) {
+        } catch (\Exception $e) {
             $this->errorMessage = $e->getMessage();
             return false;
         }
@@ -281,11 +284,11 @@ class RabbitMQClient
      * @param string $exchangeName
      * @param string $exchangeType
      * @param string $routeKey
-     * @throws AMQPChannelException
-     * @throws AMQPConnectionException
-     * @throws AMQPEnvelopeException
-     * @throws AMQPExchangeException
-     * @throws AMQPQueueException
+     * @throws \AMQPChannelException
+     * @throws \AMQPConnectionException
+     * @throws \AMQPEnvelopeException
+     * @throws \AMQPExchangeException
+     * @throws\ AMQPQueueException
      */
     public function consume(callable $callback, $queueName, $exchangeName = null, $exchangeType = AMQP_EX_TYPE_DIRECT, $routeKey = null)
     {
@@ -298,9 +301,9 @@ class RabbitMQClient
             $this->queueBind();
         }
         //阻塞消费
-        $this->queue->consume(function (AMQPEnvelope $AMQPEnvelope, AMQPQueue $AMQPQueue) {
+        $this->queue->consume(function (\AMQPEnvelope $AMQPEnvelope, \AMQPQueue $AMQPQueue) {
             if (!is_callable($this->callback)) {
-                throw new Exception('not a callback function.');
+                throw new \Exception('not a callback function.');
             }
             $result = call_user_func($this->callback, $AMQPEnvelope->getBody());
             if ($result === true) {
@@ -317,10 +320,10 @@ class RabbitMQClient
      * @param $queueName
      * @param bool $autoAck
      * @return string
-     * @throws AMQPChannelException
-     * @throws AMQPConnectionException
-     * @throws AMQPExchangeException
-     * @throws AMQPQueueException
+     * @throws \AMQPChannelException
+     * @throws \AMQPConnectionException
+     * @throws \AMQPExchangeException
+     * @throws \AMQPQueueException
      */
     public function getOneMessage($exchangeName, $queueName, $autoAck = true)
     {
@@ -333,7 +336,7 @@ class RabbitMQClient
         } else {
             $envelope = $this->queue->get();
         }
-        return $envelope instanceof AMQPEnvelope ? null : $envelope->getBody();
+        return $envelope instanceof \AMQPEnvelope ? null : $envelope->getBody();
     }
 
     /**
@@ -348,11 +351,11 @@ class RabbitMQClient
     public function getMessageCount($queueName)
     {
         try {
-            $this->queue = new AMQPQueue($this->channel);
+            $this->queue = new \AMQPQueue($this->channel);
             $this->queue->setName($queueName);
             $this->queue->setFlags(AMQP_PASSIVE);
             $this->messageCount = $this->queue->declareQueue();
-        } catch (Exception $e) {
+        } catch (\Exception $e) {
             $this->messageCount = 0;
         }
         return $this->messageCount;
