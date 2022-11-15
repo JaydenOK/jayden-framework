@@ -101,6 +101,8 @@ class RabbitMQClient
             'port' => $mqConfig['port'] ?? '5672',
             'login' => $mqConfig['login'] ?? 'admin',
             'password' => $mqConfig['password'] ?? 'admin123.',
+            'connect_timeout' => $mqConfig['password'] ?? 30,
+            'heartbeat' => $mqConfig['heartbeat'] ?? 30,
         ];
         return $this;
     }
@@ -273,24 +275,28 @@ class RabbitMQClient
     }
 
     /**
-     * 消费者消费消息（阻塞模式），需要初始化交换机，传入exchangeName名称
+     * 消费者消费消息（阻塞模式），消费端其实只要知道队列名即可，如需要初始化交换机及绑定路由，传入exchangeName，routeKey
      * @param callable $callback
      * @param $queueName
      * @param string $exchangeName
      * @param string $exchangeType
+     * @param string $routeKey
      * @throws AMQPChannelException
      * @throws AMQPConnectionException
      * @throws AMQPEnvelopeException
      * @throws AMQPExchangeException
      * @throws AMQPQueueException
      */
-    public function consume(callable $callback, $queueName, $exchangeName = '', $exchangeType = AMQP_EX_TYPE_DIRECT)
+    public function consume(callable $callback, $queueName, $exchangeName = null, $exchangeType = AMQP_EX_TYPE_DIRECT, $routeKey = null)
     {
-        $this->setCallback($callback)->setQueueName($queueName);
+        $this->setCallback($callback)->setQueueName($queueName)->setExchangeName($exchangeName)->setExchangeType($exchangeType)->setRouteKey($routeKey);
         if (!empty($exchangeName)) {
-            $this->setExchangeType($exchangeType)->setExchangeName($exchangeName)->handleExchange(true);
+            $this->handleExchange(true);
         }
         $this->handleQueue(true);
+        if (!empty($exchangeName)) {
+            $this->queueBind();
+        }
         //阻塞消费
         $this->queue->consume(function (AMQPEnvelope $AMQPEnvelope, AMQPQueue $AMQPQueue) {
             if (!is_callable($this->callback)) {

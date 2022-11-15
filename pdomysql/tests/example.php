@@ -2,6 +2,7 @@
 
 
 use module\lib\DB;
+use module\lib\Crud;
 
 $db = new DB();
 $persons = $db->query("SELECT * FROM persons");
@@ -41,7 +42,7 @@ if ($insert > 0) {
 $person_num = $db->row("SELECT * FROM Persons WHERE id = :id", array("id" => "1"), PDO::FETCH_NUM);
 
 
-class YourClass Extends Crud
+class person Extends Crud
 {
     protected $table = 'persons';
     protected $pk = 'id';
