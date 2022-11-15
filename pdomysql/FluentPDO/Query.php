@@ -1,9 +1,9 @@
 <?php
 
-namespace Envms\FluentPDO;
+namespace module\FluentPDO;
 
 use PDO;
-use Envms\FluentPDO\Queries\{Insert, Select, Update, Delete};
+use module\FluentPDO\Queries\{Insert, Select, Update, Delete};
 
 /**
  * FluentPDO is a quick and light PHP library for rapid query building. It features a smart join builder, which automatically creates table joins.

@@ -1,7 +1,7 @@
 <?php
-namespace Envms\FluentPDO\Queries;
+namespace module\FluentPDO\Queries;
 
-use Envms\FluentPDO\{Query, Utilities};
+use module\FluentPDO\{Query, Utilities};
 
 /**
  * Class Json

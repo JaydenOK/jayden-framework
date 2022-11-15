@@ -1,8 +1,8 @@
 <?php
 
-namespace Envms\FluentPDO\Queries;
+namespace module\FluentPDO\Queries;
 
-use Envms\FluentPDO\{Exception, Query};
+use module\FluentPDO\{Exception, Query};
 
 /**
  * DELETE query builder

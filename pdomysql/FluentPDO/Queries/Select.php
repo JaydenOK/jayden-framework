@@ -1,8 +1,8 @@
 <?php
 
-namespace Envms\FluentPDO\Queries;
+namespace module\FluentPDO\Queries;
 
-use Envms\FluentPDO\{Exception, Query, Utilities};
+use module\FluentPDO\{Exception, Query, Utilities};
 
 /**
  * SELECT query builder

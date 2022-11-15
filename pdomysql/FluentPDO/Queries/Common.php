@@ -1,8 +1,8 @@
 <?php
 
-namespace Envms\FluentPDO\Queries;
+namespace module\FluentPDO\Queries;
 
-use Envms\FluentPDO\{Exception, Literal, Utilities};
+use module\FluentPDO\{Exception, Literal, Utilities};
 
 /**
  * CommonQuery add JOIN and WHERE clauses for (SELECT, UPDATE, DELETE)

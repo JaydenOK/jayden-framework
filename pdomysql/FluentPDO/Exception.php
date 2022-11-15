@@ -1,6 +1,6 @@
 <?php
 
-namespace Envms\FluentPDO;
+namespace module\FluentPDO;
 
 /**
  * Class Exception

@@ -21,5 +21,5 @@ if (file_exists($moduleAutoloader)) {
  * todo 添加当前模块的命名空间
  */
 $autoloader = Autoloader::getInstance();
-$autoloader->addNamespace('Envms', MODULE_DIR);
+$autoloader->addNamespace('module', MODULE_DIR);
 $autoloader->register();
