@@ -22,9 +22,8 @@ print_r($query);
 
 //新增
 //$values = array('title' => 'article 1', 'content' => 'content 1');
-//
+
 //$query = $fluent->insertInto('article')->values($values)->execute();
-//$query = $fluent->insertInto('article', $values)->execute(); // shorter version
 
 
 //更新
