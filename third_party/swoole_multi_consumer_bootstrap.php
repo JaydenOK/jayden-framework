@@ -6,7 +6,7 @@
 
 require_once APP_ROOT . '/autoloader/Autoloader.php';
 
-$topNamespace = 'Pupilcp';
+$topNamespace = 'Jayden';
 $sourceDir = THIRD_PARTY_DIR . '/swoole-multi-consumer/src';
 
 $autoloader = Autoloader::getInstance();

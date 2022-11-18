@@ -288,7 +288,7 @@ class RabbitMQClient
      * @throws \AMQPConnectionException
      * @throws \AMQPEnvelopeException
      * @throws \AMQPExchangeException
-     * @throws\ AMQPQueueException
+     * @throws \AMQPQueueException
      */
     public function consume(callable $callback, $queueName, $exchangeName = null, $exchangeType = AMQP_EX_TYPE_DIRECT, $routeKey = null)
     {
