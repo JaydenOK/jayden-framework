@@ -5,7 +5,7 @@ composer require jaydenman/myframework
 
 ### 到 https://packagist.org/packages 发布composer包       
 
-git clone git@github.com:Jcai12321/myframework.git  
+git clone git@github.com:JaydenOK/jayden-framework.git  
 
 cd myframework  
 
