@@ -1,7 +1,7 @@
 
 ## Jayden-Framework 框架  
 ```text
-PHP工具类库，Swoole常驻进程/异步任务/多消费队列进程/协程实例，rabbitmq使用，Auth2.0，RSA加密解密，validation参数过滤校验、DI模式等。  
+PHP工具类库，Swoole常驻进程/异步任务/多消费队列进程/协程实例，rabbitmq使用，Auth2.0，RSA加密解密，JWT，validation参数过滤校验、DI模式等。  
 同时是一个支持多模块小型PHP框架，如api、apiv2为模块目录  
 （注意：一般目录下带有bootstrap.php文件的为独立于框架的用例模块） 
 php version >7.3
@@ -19,11 +19,11 @@ api   模块
 command   命令行模块      
 api - UserController  控制器    
 api - UserController - add 添加方法
-add  方法名
 config 配置目录
 core 系统核心目录
 language  国际化语言目录
 module   模块
+utils 常用工具
 third_party 第三方模块 (一般存放为直接下载的第三方项目)
 vendor  第三方扩展目录 (通过composer下载的扩展)
 docs  一些文档说明
