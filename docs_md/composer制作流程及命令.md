@@ -1,7 +1,7 @@
 ## 制作composer包流程：
 
 已加入composer包 可使用如下命令安装:  
-composer require jaydenman/myframework   
+composer require jaydenman/jayden-framework
 
 ### 到 https://packagist.org/packages 发布composer包       
 
