@@ -43,4 +43,20 @@ echo "/usr/bin/rsync --deamon" >> /etc/rc.local
 1,下载: cwRsync_5.4.1  , https://www.xiazaiba.com/html/4326.html
 2,安装目录下, 新增pass.txt, 内容为上面的/etc/rsyncd.pass密码:9d8c6fc9a53e9672d9c798e237f5386f
 3,执行同步window文件到远程服务器(认证密码,模块,源目录):
-D:/www/rsync/cwRsync_5.4/rsync.exe -avzP  --port=873 --password-file=/cygdrive/D/www/rsync/cwRsync_5.4/pass.txt /cygdrive/D/www/sw-www/coroutine-mysql-pool-task/ root@192.168.92.208::coroutine_task
+D:/www/rsync/cwRsync_5.4/rsync.exe -avzP  --port=873 --password-file=/cygdrive/D/www/rsync/cwRsync_5.4/pass.txt --exclude=logs/ --exclude=.git/ --exclude=.idea/ /cygdrive/D/www/sw-www/coroutine-mysql-pool-task/ root@192.168.92.208::coroutine_task
+
+
+
+####### windows 脚本写成bat文件，方便执行
+@echo off
+
+::::::::::::::  stop
+echo Start Sync ...
+
+D:/www/rsync/cwRsync_5.4/rsync.exe -avzP  --port=873 --password-file=/cygdrive/D/www/rsync/cwRsync_5.4/pass.txt --exclude=logs/ --exclude=.git/ --exclude=.idea/ /cygdrive/D/www/sw-www/coroutine-mysql-pool-task/ root@192.168.92.208::coroutine_task
+
+echo Success...
+:: 延时
+choice /t 1 /d y /n >nul
+::pause
+exit
