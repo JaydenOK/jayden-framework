@@ -53,7 +53,7 @@ D:/www/rsync/cwRsync_5.4/rsync.exe -avzP  --port=873 --password-file=/cygdrive/D
 ::::::::::::::  stop
 echo Start Sync ...
 
-D:/www/rsync/cwRsync_5.4/rsync.exe -avzP  --port=873 --password-file=/cygdrive/D/www/rsync/cwRsync_5.4/pass.txt --exclude=logs/ --exclude=.git/ --exclude=.idea/ /cygdrive/D/www/sw-www/coroutine-mysql-pool-task/ root@192.168.92.208::coroutine_task
+D:/www/rsync/cwRsync_5.4/rsync.exe -avzP  --port=873 --delete --password-file=/cygdrive/D/www/rsync/cwRsync_5.4/pass.txt --exclude=logs/ --exclude=.git/ --exclude=.idea/ /cygdrive/D/www/sw-www/coroutine-mysql-pool-task/ root@192.168.92.208::coroutine_task
 
 echo Success...
 :: 延时
