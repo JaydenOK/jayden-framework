@@ -59,3 +59,14 @@ composer 忽略依赖
 提示我的PHP 7版本太高，不符合composer.json需要的版本，但是在PHP 7下应该也是可以运行的，composer可以设置忽略版本匹配，命令是：
 composer install -vvv --profile --ignore-platform-reqs
 composer update -vvv --profile --ignore-platform-reqs
+
+
+)))))))
+下载第三方代码，在autoloader中手动注册命名空间：
+```php
+$loader = include 'vendor/autoload.php';
+$loader->setPsr4('jaydenok\\', 'third_party/src/');
+$loader->addClassMap([
+    'jaydenok\\module' => 'third_party/src/serv.php'
+]);
+```
