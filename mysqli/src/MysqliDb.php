@@ -1,5 +1,13 @@
 <?php
 
+
+//use Exception;
+//use mysqli;
+//use mysqli_result;
+//use mysqli_stmt;
+//use ReflectionClass;
+//use stdClass;
+
 /**
  * Mysqli核心类
  *
@@ -225,6 +233,12 @@ class MysqliDb
     protected $traceEnabled;
     protected $traceStripPrefix;
     public $trace = array();
+
+    /**
+     * 页码
+     * @var int
+     */
+    private $page = 1;
 
     /**
      * 分页的每页条数
@@ -1740,6 +1754,12 @@ class MysqliDb
         return $this;
     }
 
+    public function page($page)
+    {
+        $this->page = $page;
+        return $this;
+    }
+
     /**
      * Abstraction method that will build an JOIN part of the query
      *
@@ -2427,8 +2447,11 @@ class MysqliDb
      * @return array
      * @throws Exception
      */
-    public function paginate($table, $page, $fields = null)
+    public function paginate($table, $page = null, $fields = null)
     {
+        if ($page === null) {
+            $page = $this->page === null ? 1 : $this->page;
+        }
         $offset = $this->pageLimit * ($page - 1);
         $res = $this->withTotalCount()->get($table, Array($offset, $this->pageLimit), $fields);
         $this->totalPages = ceil($this->totalCount / $this->pageLimit);
