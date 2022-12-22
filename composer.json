@@ -22,6 +22,7 @@
         "league/oauth2-client": "^2.6",
         "ext-curl": "*",
         "php-http/httplug": "^2.3",
-        "ext-amqp": "*"
+        "ext-amqp": "*",
+        "ext-redis": "*"
     }
 }
