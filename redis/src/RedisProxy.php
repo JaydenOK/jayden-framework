@@ -1,6 +1,6 @@
 <?php
 
-class RedisClient
+class RedisProxy
 {
 
     protected $host;
@@ -78,7 +78,7 @@ class RedisClient
         try {
             $return = call_user_func_array(array($this->redis, $name), $arguments);
             return $return;
-        } catch (RedisException $e) {
+        } catch (\RedisException $e) {
             throw $e;
         }
     }
