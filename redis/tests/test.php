@@ -7,6 +7,6 @@ $config = [
     'password' => 'fok09213',
 ];
 $redisClient = new RedisClient($config['host'], $config['port'], $config['password']);
-$return = $redisClient->set('foo.bar', 3235);
+$return = $redisClient->set('foo.bar', "aaa123啧啧啧", 60);
 $return = $redisClient->get('foo.bar');
 print_r($return);
