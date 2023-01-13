@@ -64,6 +64,9 @@ class RedisProxy
         $this->redis = null;
     }
 
+    /**
+     * @return Redis
+     */
     public function getRedis()
     {
         return $this->redis;
