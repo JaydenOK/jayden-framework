@@ -9,6 +9,8 @@ use PDOException;
 /**
  * PDOx - Useful Query Builder & PDO Class
  *
+ * Pdox 直接query()/fetch(), exec()执行模式，不是prepare预处理，类似于mysqli
+ *
  * @package  Pdox
  * @author   izni burak demirtaş (@izniburak) <info@burakdemirtas.org>
  * @url      <https://github.com/izniburak/PDOx>

@@ -6,6 +6,9 @@ use PDO;
 use module\FluentPDO\Queries\{Insert, Select, Update, Delete};
 
 /**
+ *
+ * query()/fetch(), prepare预处理执行模式
+ *
  * FluentPDO is a quick and light PHP library for rapid query building. It features a smart join builder, which automatically creates table joins.
  *
  * For more information see readme.md

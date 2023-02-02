@@ -1,5 +1,6 @@
 <?php
 
+//query()/fetch(), prepare预处理执行模式
 
 //http://jayden.cc/pdomysql/tests/pdo_mysql_test.php
 
