@@ -23,6 +23,10 @@ class PageRecursionUtil
      * @var int
      */
     protected $page = 1;
+    /**
+     * @var int
+     */
+    private $execNum = 0;
 
     /**
      * @return callable
@@ -97,6 +101,14 @@ class PageRecursionUtil
     }
 
     /**
+     * @return int
+     */
+    public function getExecNum(): int
+    {
+        return $this->execNum;
+    }
+
+    /**
      * @param callable|null $callback
      * @param null $params
      * @param null $pageSize
@@ -117,7 +129,8 @@ class PageRecursionUtil
             $this->setPage($page);
         }
         $loopSize = call_user_func($this->callback, $this);
-        if ($loopSize !== null && $loopSize === $this->pageSize) {
+        $this->execNum += (int)$loopSize;
+        if ($loopSize !== null && $loopSize == $this->pageSize) {
             $this->page++;
             $this->run();
         }
@@ -126,7 +139,9 @@ class PageRecursionUtil
     //usage
     private function demo()
     {
-        (new PageRecursionUtil())->run(function (PageRecursionUtil $pageRecursionUtil) {
+        $pageRecursionUtil = new PageRecursionUtil();
+        $pageRecursionUtil->run(function (PageRecursionUtil $pageRecursionUtil) {
+            $page = $pageRecursionUtil->getPage();
             $list = ['a' => '1'];
             foreach ($list as $item) {
                 //todo something ...
@@ -134,6 +149,7 @@ class PageRecursionUtil
             $roundCount = count($list);
             return $roundCount;
         }, ['account_type' => 16], 100, 1);
+        echo 'total exec num:' . $pageRecursionUtil->getExecNum();
     }
 
 }
