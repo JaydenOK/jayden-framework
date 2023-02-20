@@ -13,7 +13,7 @@ isException="N"
 fpmNum=`ps aux|grep php|grep -v defunct|grep -v grep|wc -l`
 # check curl request
 for (( i = 0; i < $curlNumLimit; i++ )); do
-    httpCode=`curl -I  -m  10  -o  /dev/null  -s  -w  %{http_httpCode} ${requestUrl}`
+    httpCode=`curl -I  -m  10  -o  /dev/null  -s  -w  %{http_code} ${requestUrl}`
     if [[ $httpCode == 200 ]]; then
         isCurlException=0
         break
