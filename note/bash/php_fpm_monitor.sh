@@ -3,7 +3,7 @@
 
 fpmNumLimit=10
 curlNumLimit=3
-dingTalkToken="8348d36977213f50b64066e08e62dedc7f815ef1c1af3fc6b2f4fdde342ef0f1"
+dingTalkToken="xxxxxxxxxx"
 requestUrl="https://center.yibainetwork.com"
 
 isCurlException=1
