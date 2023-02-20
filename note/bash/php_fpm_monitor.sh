@@ -35,7 +35,7 @@ function sendMessage() {
     curl -H 'Content-Type: application/json' -X POST -d ${data} "https://oapi.dingtalk.com/robot/send?access_token=${dingTalkToken}" > /dev/null
 }
 
-function restartFpmProcess() {
+function restartPhpFpm() {
     PID=`ps aux|grep php|grep master|awk '{print $2}'`
     if [[ $PID == "" ]];then
         /usr/local/php/sbin/php-fpm
