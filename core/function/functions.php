@@ -525,57 +525,6 @@ function query2Array($query)
 
 //###### sql的自拼接,多行变一行 (查后台名)
 // SELECT CONCAT(  '\'', GROUP_CONCAT( `plat_cname` SEPARATOR  '\',\'' ) ,  '\'' ) FROM  `game_plat_info`
-// Array
-// (
-// [3dcenter] => 103.235.222.34
-// [yybtest] => 106.75.103.106
-// [qdhf] => 106.75.103.106
-// [yuenan] => 103.216.123.138
-// [ouwan] => 106.75.103.247
-// [diyibo] => 106.75.77.146
-// [huiyao] => 106.75.30.176
-// [9377] => 106.75.30.176
-// [xiangwan] => 106.75.77.146
-// [c1wan] => 106.75.103.247
-// [921] => 106.75.28.46
-// [duoqu] => 106.75.28.46
-// [mofang] => 47.75.59.13
-// [mfcenter] => 47.75.59.13
-// [zsy] => 106.75.77.146
-// [yncenter] => 103.216.123.138
-// [youma] => 106.75.103.247
-// )
-
-//得到管理后台ip
-function get_manager_db_host()
-{
-    $arr = $arrMap = array();
-    $plat_arr = array('g1', 'h1', 'g2');
-    $domain = 'manager.PLAT_NAME.ylcq.such-game.com';    // g1
-    $domain2 = 'manager.PLAT_NAME.h1.such-game.com';    // h1
-    $domain3 = 'manager.PLAT_NAME.g2.such-game.com';    // g2
-    $plat_names = array('t1center', '3dcenter', 'yybtest', 'ttgw', 'qdhf', 'ylcqsh', 'yuenan', 'ouwan', 'diyibo', 'huiyao', '9377', 'xiangwan', 'c1wan', '921', 'duoqu', 'mofang', 'mfcenter', 'zsy', 'h1center', 'g2center', 'yncenter', 'renwant', 'huiyao', 'fengling', 'youma', 'youximao');
-    foreach ($plat_names as $plat_name) {
-        $plat_domain = str_replace('PLAT_NAME', $plat_name, $domain);
-        // $plat_names[$plat_name] = gethostbyname($plat_domain);
-        $host = gethostbyname($plat_domain);
-        if (false === filter_var($host, FILTER_VALIDATE_IP)) {
-            $plat_domain = str_replace('PLAT_NAME', $plat_name, $domain2);
-            $host = gethostbyname($plat_domain);
-            if (false === filter_var($host, FILTER_VALIDATE_IP)) {
-                $plat_domain = str_replace('PLAT_NAME', $plat_name, $domain3);
-                $host = gethostbyname($plat_domain);
-                if (false === filter_var($host, FILTER_VALIDATE_IP)) {
-                    ddd('未找到:' . $plat_domain);
-                    continue;
-                }
-            }
-        }
-        $arr[$plat_name] = $host;
-        $arrMap[$plat_name] = $plat_domain . "\t\t" . $host;
-    }
-    ddd($arrMap);
-}
 
 
 function discuzAuthcode($string, $operation = 'DECODE', $key = '', $expiry = 0, $len = 128)
@@ -668,7 +617,6 @@ function Simplesec_decode($string = '', $skey = 'huosdk')
     return base64_decode(join('', $strArr));
 }
 
-
 function get_create_conf($game_id = 2, $plat_cname = 'mofang', $ac = 'get_game_server_list')
 {
 
@@ -721,117 +669,6 @@ function get_format_txt_sql($file_path = 'format.txt')
     $sql_in = '(\'' . implode('\',\'', $arr) . '\')';
     file_put_contents('format.sql.txt', '[' . date('Y-m-d H:i:s') . ']' . "\r\n" . $sql_in . "\r\n");
     return $sql_in;
-}
-
-
-/**
- * tp 获取商品一二三级分类
- * @return type
- */
-function get_goods_category_tree($cat_list = null)
-{
-    $tree = $arr = $result = array();
-    if ($cat_list) {
-        foreach ($cat_list as $val) {
-            if ($val['level'] == 2) {
-                $arr[$val['parent_id']][] = $val;
-            }
-            if ($val['level'] == 3) {
-                $crr[$val['parent_id']][] = $val;
-            }
-            if ($val['level'] == 1) {
-                $tree[] = $val;
-            }
-        }
-
-        // 处理2,3级关系
-        foreach ($arr as $k => $v) {
-            foreach ($v as $kk => $vv) {
-                $arr[$k][$kk]['sub_menu'] = empty($crr[$vv['id']]) ? array() : $crr[$vv['id']];
-            }
-        }
-
-        foreach ($tree as $val) {
-            $val['tmenu'] = empty($arr[$val['id']]) ? array() : $arr[$val['id']];
-            $result[$val['id']] = $val;
-        }
-    }
-    return $result;
-}
-
-/**
- * 传入当前分类 如果当前是 2级 找一级
- * 如果当前是 3级 找2 级 和 一级
- * @param  $goodsCate
- */
-function get_goods_cate(&$goodsCate)
-{
-    if (empty($goodsCate)) return array();
-    $cateAll = get_goods_category_tree();
-    if ($goodsCate['level'] == 1) {
-        $cateArr = $cateAll[$goodsCate['id']]['tmenu'];
-        $goodsCate['parent_name'] = $goodsCate['name'];
-        $goodsCate['select_id'] = 0;
-    } elseif ($goodsCate['level'] == 2) {
-        $cateArr = $cateAll[$goodsCate['parent_id']]['tmenu'];
-        $goodsCate['parent_name'] = $cateAll[$goodsCate['parent_id']]['name'];//顶级分类名称
-        $goodsCate['open_id'] = $goodsCate['id'];//默认展开分类
-        $goodsCate['select_id'] = 0;
-    } else {
-        //3级找2级
-        $parent = M('GoodsCategory')->where("id", $goodsCate['parent_id'])->order('`sort_order` desc')->find();//父类
-        $cateArr = $cateAll[$parent['parent_id']]['tmenu'];
-        $goodsCate['parent_name'] = $cateAll[$parent['parent_id']]['name'];//顶级分类名称
-        $goodsCate['open_id'] = $parent['id'];
-        $goodsCate['select_id'] = $goodsCate['id'];//默认选中分类
-    }
-    return $cateArr;
-}
-
-
-//获取天拓数据签名
-function get_tt_sign($data, $key)
-{
-    ksort($data);
-    $str = '';
-    foreach ($data as $k => $v) {
-        if ($k == 'sign' || $k == 'sign_type' || $v === '') {
-            continue;
-        }
-        $str .= $k . '=' . urlencode($v) . '&';
-    }
-    $str = rtrim($str, '&');
-    if (get_magic_quotes_gpc()) {
-        $str = stripslashes($str);
-    }
-    return md5($str . $key);
-}
-
-//获取天拓海外数据签名
-function get_tt_abroad_sign($data, $key)
-{
-    ksort($data);
-    $str = '';
-    foreach ($data as $k => $v) {
-        if ($k == 'sign' || $v === '') continue;
-        $str .= $k . '=' . urldecode($v) . '&';
-    }
-    if (get_magic_quotes_gpc()) {
-        $str = stripslashes($str);
-    }
-    return md5($str . $key);
-}
-
-function get_renwan_sign(array $params, $secret)
-{
-    $data = [];
-    ksort($params);
-    foreach ($params as $k => $v) {
-        if ($k == 'sign') continue;
-        $data[] = $k . '=' . $v;
-    }
-    $signString = implode('&', $data);
-    return md5(md5($signString) . $secret);
 }
 
 function getHead($sUrl, $data)
@@ -1616,4 +1453,57 @@ function asyncRequest($url, $data = [], $method = 'GET', $isGetResponse = false)
 function getMillisecond()
 {
     return intval(array_sum(array_reverse(explode(' ', microtime()))) * 1000);
+}
+
+
+/**
+ * 把返回的数据集转换成Tree
+ * @param $list
+ * @param $pk
+ * @param $pid
+ * @param $child
+ * @param $root
+ * @return array
+ */
+function listToTree($list, $pk = 'id', $pid = 'pid', $child = 'children', $root = 0)
+{
+    $tree = [];
+    $refer = [];
+    foreach ($list as $key => $data) {
+        $refer[$data[$pk]] = &$list[$key];
+    }
+    foreach ($list as $key => $data) {
+        $parentId = $data[$pid];
+        if ($root == $parentId) {
+            $tree[] = &$list[$key];
+        } else {
+            if (isset($refer[$parentId])) {
+                $parent = &$refer[$parentId];
+                $parent[$child][] = &$list[$key];
+            }
+        }
+    }
+    return $tree;
+}
+
+/**
+ * 把Tree数据集转换成数组
+ * @param $data
+ * @param $key
+ * @param $result
+ * @return array|mixed
+ */
+function treeToList($data, $key = 'children', &$result = [])
+{
+    foreach ($data as $item) {
+        if (!isset($item[$key])) {
+            $result[] = $item;
+        } else {
+            $child = $item[$key];
+            unset($item[$key]);
+            $result[] = $item;
+            treeToList($child, $key, $result);
+        }
+    }
+    return $result;
 }
