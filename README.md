@@ -4,10 +4,13 @@
 PHP工具类库，Swoole常驻进程/异步任务/多消费队列进程/协程实例，rabbitmq使用，Auth2.0，RSA加密解密，JWT，validation参数过滤校验、DI模式等。  
 同时是一个支持多模块小型PHP框架，如api、apiv2为模块目录  
 （注意：一般目录下带有bootstrap.php文件的为独立于框架的用例模块） 
-php version >7.3
+
 ```
 
-## 架构及目录
+#### 版本
+php > 7.1
+
+#### 架构及目录
 项目jayden-framework即为app应用根目录，命名空间根目录app:    
 
 app架构遵循:应用-模块-控制器-方法结构  
@@ -28,12 +31,12 @@ vendor  第三方扩展目录 (通过composer下载的扩展)
 docs  一些文档说明
 ```
 
-###  下载安装，支持composer
+####  下载安装，支持composer
 ```shell script
 composer require jaydenok/jayden-framework
 ```
   
-## 操作 
+#### 操作 
 ```
 action方法内部获取请求数据，使用$this->body或注入run($body)获取  
 访问路由： 
@@ -46,7 +49,7 @@ php index.php "command/Smc/test" "param1=1&param2=2"
 ```
 
   
-## 其它目录为单个模块库    
+#### 其它目录为单个模块库    
 ```
 php工具类库，mysql高阶查询等  
 支持命名空间、多模块，控制器，方法小型PHP项目_  
@@ -63,7 +66,7 @@ utils php常用工具集合 (一般一个工具存放在一个文件夹)
 require '../bootstrap.php';
 ```
 
-## 存在的独立功能模块
+#### 存在的独立功能模块
 ```text
 PSR 注册命名空间   | autoloader/Autoloader.php
 雪花算法 （分布式ID生成） | php-snowflake
@@ -75,7 +78,7 @@ php-di容器 | vendor
 rakit 参数验证器 | rakit 
 ```
 
-## docs_md 文档
+#### docs_md 文档
 ```shell script
 window与linux远程文件同步.sh
 ```
