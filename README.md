@@ -1,14 +1,14 @@
 
 ## Jayden-Framework 框架  
-```text
 PHP工具类库，Swoole常驻进程/异步任务/多消费队列进程/协程实例，rabbitmq使用，Auth2.0，RSA加密解密，JWT，validation参数过滤校验、DI模式等。  
 同时是一个支持多模块小型PHP框架，如api、apiv2为模块目录  
 （注意：一般目录下带有bootstrap.php文件的为独立于框架的用例模块） 
 
-```
 
-#### 版本
+### 版本
+```shell script
 php > 7.1
+```
 
 #### 架构及目录
 项目jayden-framework即为app应用根目录，命名空间根目录app:    
