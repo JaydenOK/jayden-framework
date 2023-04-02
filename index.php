@@ -15,7 +15,9 @@ defined('DS') || define('DS', DIRECTORY_SEPARATOR);
 defined('APP_ROOT') || define('APP_ROOT', __DIR__);
 defined('APP_NAME') || define('APP_NAME', 'app');
 defined('THIRD_PARTY_DIR') || define('THIRD_PARTY_DIR', APP_ROOT . DS . 'third_party');
-
+/**
+ * @var $app app\core\lib\App
+ */
 $app = App::getInstance();
 $app->run();
 
