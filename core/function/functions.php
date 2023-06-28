@@ -995,7 +995,7 @@ function sendRequestAsync($url, $post_data = array(), $cookie = array())
     $header .= "Host: " . $url_arr['host'] . "\r\n";
     if (!empty($cookie)) {  //传递cookie信息
         $_cookie = strval(NULL);
-        foreach ($cookie AS $k => $v) {
+        foreach ($cookie as $k => $v) {
             $_cookie .= $k . "=" . $v . ";";
         }
         $cookie_str = "Cookie:" . base64_encode($_cookie) . "\r\n";
@@ -1003,7 +1003,7 @@ function sendRequestAsync($url, $post_data = array(), $cookie = array())
     }
     if (!empty($post_data)) {  //传递post数据
         $_post = array();
-        foreach ($post_data AS $_k => $_v) {
+        foreach ($post_data as $_k => $_v) {
             $_post[] = $_k . "=" . urlencode($_v);
         }
         $_post = implode('&', $_post);
@@ -1470,6 +1470,7 @@ function listToTree($list, $pk = 'id', $pid = 'pid', $child = 'children', $root 
     $tree = [];
     $refer = [];
     foreach ($list as $key => $data) {
+        //以pid为键的引用此数组
         $refer[$data[$pk]] = &$list[$key];
     }
     foreach ($list as $key => $data) {
