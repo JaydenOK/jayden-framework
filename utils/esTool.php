@@ -49,87 +49,6 @@ class esTool
     }
 
     /**
-     * 描述: 查找一个记录(基于主键_id，或唯一键查询)
-     * 作者: Jayden
-     */
-    public static function findOne($node, $index, $queryBody, $sourceFields = true)
-    {
-        if (empty($queryBody)) {
-            return [];
-        }
-        $client = Elasticsearch\ClientBuilder::create()
-            ->setHosts($node)
-            ->build();
-        $body = [];
-        $body['query'] = $queryBody;
-        $pageSize = 1;
-        $page = 1;
-        $params = [
-            'index' => $index,
-            'body' => $body,
-            '_source' => $sourceFields,
-            'from' => ($page - 1) * $pageSize,
-            'size' => $pageSize
-        ];
-        $results = $client->search($params);
-        //$results = $client->get($params);
-        $return = [
-            'total' => $results['hits']['total']['value'] ?? 0,       //总记录数
-            'records' => [],    //当前返回记录数
-        ];
-        if (isset($results['hits']) && !empty($results['hits'])) {
-            foreach ($results['hits']['hits'] as $row) {
-                $return['records'][] = array_merge(['_id' => $row['_id']], $row['_source']);
-            }
-        }
-        return $return;
-    }
-
-    /**
-     * 描述: 更新记录。_id不存在不更新，可指定更新部分数据
-     * @var $retryOnConflict int 并发冲突，重试次数
-     * 作者: Jayden
-     */
-    public static function updateOne($node, $index, $data, $id, $retryOnConflict = null)
-    {
-        try {
-            $client = Elasticsearch\ClientBuilder::create()
-                ->setHosts($node)
-                ->build();
-            $params = [
-                'index' => $index,
-                'id' => $id,
-                'retry_on_conflict' => $retryOnConflict ?? 3,
-                'body' => ['doc' => $data],
-            ];
-            $result = $client->update($params);
-            return $result['_id'] ?? null;
-        } catch (\Exception $e) {
-            //MEMO日志类型
-            self::$errorMessage = $e->getMessage();
-            //记录日志
-            of::event('of::error', true, [
-                'memo' => true,
-                'code' => E_USER_ERROR,
-                'info' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine()
-            ]);
-            return false;
-        }
-    }
-
-    /**
-     * 描述: 批量更新
-     * 作者: Jayden
-     */
-    public static function updateMany($node, $index, $data)
-    {
-        //todo
-        return true;
-    }
-
-    /**
      * 描述: ES查询
      * @param $node array 节点
      * @param $index string 索引
@@ -535,7 +454,7 @@ class esTool
      * $data['_id'] : es主键，字段不插入文档
      * 作者: Jayden
      */
-    public static function insertOne($node, $index, $data)
+    public static function insertOne($node, $index, $data, $replace = true)
     {
         try {
             $client = Elasticsearch\ClientBuilder::create()->setHosts($node)->build();
@@ -571,12 +490,184 @@ class esTool
 
     /**
      * 描述: 批量插入记录
+     * replace 主键_id记录存在是否替换 true (index存在覆盖更新), false(create存在则插入失败)
+     * （2）create：PUT /index/type/id/_create；只创建新文档
+     * （3）index：普通的put操作，可以是创建文档，也可以是全量替换文档
+     *  https://www.elastic.co/guide/en/elasticsearch/reference/current/docs-bulk.html
      * 作者: Jayden
      */
-    public static function insertMany($node, $index, $data)
+    public static function insertMany($node, $index, $data, $replace = true)
     {
-        //todo
-        return true;
+        try {
+            if (!is_array($data)) {
+                return false;
+            }
+            $insertData = [];
+            $type = $replace ? 'index' : 'create';
+            foreach ($data as $key => $item) {
+                $_id = null;
+                if (isset($item['_id'])) {
+                    $_id = !empty($item['_id']) ? $item['_id'] : md5(uniqid('', true) . mt_rand());
+                    unset($item['_id']);
+                }
+                $item['esAddTime'] = !empty($item['esAddTime']) ? $item['esAddTime'] : time();
+                $meta = [];
+                $meta[$type]['_index'] = $index;
+                if (!empty($_id)) {
+                    $meta[$type]['_id'] = $_id;
+                }
+                $insertData[] = $meta;
+                $insertData[] = $item;
+            }
+            $params = [
+                'index' => $index,  //默认索引，可在里层传
+                'body' => $insertData,
+            ];
+            $client = Elasticsearch\ClientBuilder::create()->setHosts($node)->build();
+            $result = $client->bulk($params);
+            return $result ?? null;
+        } catch (\Exception $e) {
+            self::$errorMessage = $e->getMessage();
+            //记录日志
+            of::event('of::error', true, [
+                'memo' => true,
+                'code' => E_USER_ERROR,
+                'info' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ]);
+            return false;
+        }
+    }
+
+    /**
+     * 描述: 查找一个记录(基于主键_id，或唯一键查询)
+     * {"_id": "t1"}
+     * 作者: Jayden
+     */
+    public static function findOne($node, $index, $queryBody, $sourceFields = true)
+    {
+        if (empty($queryBody)) {
+            return [];
+        }
+        $client = Elasticsearch\ClientBuilder::create()
+            ->setHosts($node)
+            ->build();
+        $body = [];
+        $body['query'] = self::expandQuery($queryBody);
+        $pageSize = 1;
+        $page = 1;
+        if (!empty($queryBody['_id'])) {
+            //有主键查询，get()只能根据主键id查
+            $params = ['id' => $queryBody['_id'], 'index' => $index];
+            if (!empty($sourceFields)) {
+                $params['_source'] = $sourceFields;
+            }
+            $tempResults = $client->get($params);
+            if (!empty($tempResults['found']) && $tempResults['found'] === true) {
+                $results = [];
+                $results['hits']['total']['value'] = 1;
+                $results['hits']['hits'] = [$tempResults];
+            }
+        } else {
+            //无主键查询
+            $params = [
+                'index' => $index,
+                'body' => $body,
+                '_source' => $sourceFields,
+                'from' => ($page - 1) * $pageSize,
+                'size' => $pageSize
+            ];
+            $results = $client->search($params);
+        }
+        $return = [
+            'total' => $results['hits']['total']['value'] ?? 0,       //总记录数
+            'records' => [],    //当前返回记录数
+        ];
+        if (isset($results['hits']) && !empty($results['hits'])) {
+            foreach ($results['hits']['hits'] as $row) {
+                $return['records'][] = array_merge(['_id' => $row['_id']], $row['_source']);
+            }
+        }
+        return $return;
+    }
+
+    /**
+     * 描述: 更新记录。_id不存在不更新，可指定更新部分数据
+     * @var $retryOnConflict int 并发冲突，重试次数
+     * 作者: Jayden
+     */
+    public static function updateOne($node, $index, $data, $id, $retryOnConflict = null)
+    {
+        try {
+            $client = Elasticsearch\ClientBuilder::create()
+                ->setHosts($node)
+                ->build();
+            $params = [
+                'index' => $index,
+                'id' => $id,
+                'retry_on_conflict' => $retryOnConflict ?? 3,
+                'body' => ['doc' => $data],
+            ];
+            $result = $client->update($params);
+            return $result['_id'] ?? null;
+        } catch (\Exception $e) {
+            //MEMO日志类型
+            self::$errorMessage = $e->getMessage();
+            //记录日志
+            of::event('of::error', true, [
+                'memo' => true,
+                'code' => E_USER_ERROR,
+                'info' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ]);
+            return false;
+        }
+    }
+
+    /**
+     * 描述: 批量更新，根据id批量更新
+     * 作者: Jayden
+     */
+    public static function updateMany($node, $index, $data)
+    {
+        try {
+            if (!is_array($data)) {
+                return false;
+            }
+            $updateData = [];
+            foreach ($data as $key => $item) {
+                if (empty($item['_id'])) {
+                    throw new \Exception("empty _id, index:{$key}");
+                }
+                $meta = [];
+                $meta['update']['_index'] = $index;
+                $meta['update']['_id'] = $item['_id'];
+                unset($item['_id']);
+                $updateData[] = $meta;
+                $updateData[] = ['doc' => $item];
+            }
+            $params = [
+                'index' => $index,  //默认索引
+                'body' => $updateData,
+            ];
+            $client = Elasticsearch\ClientBuilder::create()->setHosts($node)->build();
+            $result = $client->bulk($params);
+            return $result ?? null;
+        } catch (\Exception $e) {
+            //MEMO日志类型
+            self::$errorMessage = $e->getMessage();
+            //记录日志
+            of::event('of::error', true, [
+                'memo' => true,
+                'code' => E_USER_ERROR,
+                'info' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ]);
+            return false;
+        }
     }
 
     /**
@@ -694,15 +785,15 @@ class esTool
      * 描述 : 创建索引周期
      * $policiesName = '7d-2d-2d-delete-new';
      * $dayConfig = [
-     * 'hot' => 10,
-     * 'cold' => 3,
-     * 'delete' => 2,
+     * 'hot' => '30d',
+     * 'warm' => '40d',
+     * 'cold' => '50d',
+     * 'delete' => '60d',
      * ];
      * 作者 : Jayden
      */
     public static function createLifecyclePolicies($node, $policiesName, $dayConfig)
     {
-        $client = Elasticsearch\ClientBuilder::create()->setHosts($node)->build();
         $params = [
             //索引生命周期的名字
             'policy' => $policiesName,
@@ -710,34 +801,47 @@ class esTool
                 'policy' => [
                     'phases' => [
                         'hot' => [
+                            "min_age" => "0ms", //如果创建的策略Policy 具有未指定 min_age 的热阶段，min_age 默认为 0 ms。
                             "actions" => [
                                 //滚动创建新索引的触发条件
                                 "rollover" => [
-                                    "max_age" => "{$dayConfig['hot']}d",
-                                    //"max_size" => "500gb",
-                                    "max_primary_shard_size" => "500gb",        //最大
-                                ]
+                                    "max_age" => "{$dayConfig['hot']}",       //历史索引保留时间的判断条件
+                                    //"max_size" => "500gb",                    //当索引达到一定大小时触发翻转。这是索引中所有主分片的总大小。副本不计入最大索引大小。
+                                    "max_primary_shard_size" => "500gb",        //防止滚动，直到索引中最大的主分片达到一定大小
+                                ],
+                                "set_priority" => [
+                                    "priority" => 100
+                                ],
+                            ]
+                        ],
+                        'warm' => [
+                            "min_age" => "{$dayConfig['warm']}",   //min_age通常是指从索引被创建时算起的时间，多少时间后进入此阶段，设置索引进入warm阶段所需的时间。
+                            "actions" => [
+                                "set_priority" => [
+                                    "priority" => 50
+                                ],
                             ]
                         ],
                         'cold' => [
-                            "min_age" => "{$dayConfig['cold']}d",
+                            "min_age" => "{$dayConfig['cold']}",
                             "actions" => [
                                 "set_priority" => [
                                     "priority" => 0
                                 ],
-                                //"readonly" => [],           //只读
+                                "readonly" => new \stdClass(),           //只读
                             ]
                         ],
                         'delete' => [
-                            'min_age' => "{$dayConfig['delete']}d",
+                            'min_age' => "{$dayConfig['delete']}",
                             'actions' => [
-                                'delete' => [],
+                                'delete' => new \stdClass(),
                             ],
                         ],
                     ]
                 ]
             ]
         ];
+        $client = Elasticsearch\ClientBuilder::create()->setHosts($node)->build();
         $res = $client->ilm()->putLifecycle($params);
         return $res;
     }
@@ -749,30 +853,30 @@ class esTool
      */
     public static function createIndexTemplate($node, $policiesName, $indexName, $mappings)
     {
+        $params = [
+            'name' => $indexName,
+            'body' => [
+                'index_patterns' => [
+                    $indexName . "*"
+                ],
+                'data_stream' => new \stdClass(),   //索引到数据流的每个文档都必须包含一个@timestamp映射为date或date_nanos字段类型的字段。如果索引模板未指定字段的映射@timestamp，Elasticsearch 会映射 @timestamp为date具有默认选项的字段。
+                'template' => [
+                    'settings' => [ //配置
+                        "index.lifecycle.name" => $policiesName,  //索引生命周期，要先创建
+                        "index.number_of_shards" => 12,
+                        "index.number_of_replicas" => 0,
+                        "index.translog.durability" => "async",
+                        "index.translog.sync_interval" => "120s",
+                        "index.translog.flush_threshold_size" => "1024mb",
+                        "index.refresh_interval" => "30s"
+                    ],
+                    'mappings' => $mappings,
+                ],
+                'composed_of' => [],
+            ]
+        ];
         $client = Elasticsearch\ClientBuilder::create()->setHosts($node)->build();
-        $res = $client->indices()
-            ->putIndexTemplate([
-                'name' => $indexName,
-                'body' => [
-                    'index_patterns' => [
-                        $indexName . "*"
-                    ],
-                    'data_stream' => new \stdClass(),
-                    'template' => [
-                        'settings' => [ //配置
-                            "index.lifecycle.name" => $policiesName,  //索引生命周期，要先创建
-                            "index.number_of_shards" => 12,
-                            "index.number_of_replicas" => 0,
-                            "index.translog.durability" => "async",
-                            "index.translog.sync_interval" => "120s",
-                            "index.translog.flush_threshold_size" => "1024mb",
-                            "index.refresh_interval" => "30s"
-                        ],
-                        'mappings' => $mappings,
-                    ],
-                    'composed_of' => [],
-                ]
-            ]);
+        $res = $client->indices()->putIndexTemplate($params);
         return $res;
     }
 }
