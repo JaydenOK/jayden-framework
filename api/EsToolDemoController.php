@@ -288,4 +288,181 @@ class EsToolDemoController extends Controller
         $res = self::deleteIndex($node, $index);
         return $res;
     }
+
+    public function test()
+    {
+        //#查询
+        //        GET /ims_eb_spu_change_stock/_search
+        //{
+        //    "size":100,
+        //  "sort": [
+        //    {
+        //        "createTime": {
+        //        "order": "asc"
+        //      }
+        //    }
+        //  ]
+        //}
+        //
+        //
+        //GET /ims_eb_spu_change_stock/_search
+        //{
+        //    "query": {
+        //    "range": {
+        //        "createTime": {
+        //            "eq": "2024-01-08 08:00:00",
+        //        "lte": "2024-01-08 12:00:00"
+        //      }
+        //    }
+        //  }
+        //}
+        //
+        //GET /_sql
+        //{
+        //    "query": """
+        //  SELECT * FROM ims_eb_spu_change_stock where createTime>'2024-01-08 08:00:00' and createTime<='2024-01-08 16:00:00'
+        //  """
+        //}
+        //
+        //#新增, （/_doc/1 使用自定义主键）
+        //POST /ims_eb_spu_change_stock/_doc
+        //{"accountCode": "a","accountName": "1","createTime": "2024-01-08 00:00:00"}
+        //
+        //#批量新增
+        //POST /_bulk
+        //{"create":{"_index":"ims_eb_spu_change_stock"}}
+        //{"accountCode": "a","accountName": "2024-01-08 00:00:00","createTime": "2024-01-08 00:00:00"}
+        //{"create":{"_index":"ims_eb_spu_change_stock"}}
+        //{"accountCode": "a","accountName": "2024-01-08 04:00:00","createTime": "2024-01-08 04:00:00"}
+        //{"create":{"_index":"ims_eb_spu_change_stock"}}
+        //{"accountCode": "a","accountName": "2024-01-08 08:00:00","createTime": "2024-01-08 08:00:00"}
+        //{"create":{"_index":"ims_eb_spu_change_stock"}}
+        //{"accountCode": "a","accountName": "2024-01-08 12:00:00","createTime": "2024-01-08 12:00:00"}
+        //{"create":{"_index":"ims_eb_spu_change_stock"}}
+        //{"accountCode": "a","accountName": "2024-01-08 16:00:00","createTime": "2024-01-08 16:00:00"}
+        //{"create":{"_index":"ims_eb_spu_change_stock"}}
+        //{"accountCode": "a","accountName": "2024-01-08 20:00:00","createTime": "2024-01-08 20:00:00"}
+        //{"create":{"_index":"ims_eb_spu_change_stock"}}
+        //{"accountCode": "a","accountName": "2024-01-09 00:00:00","createTime": "2024-01-09 00:00:00"}
+        //{"create":{"_index":"ims_eb_spu_change_stock"}}
+        //{"accountCode": "a","accountName": "2024-01-08 11:11:11","createTime": "2024-01-08 11:11:11"}
+        //
+        //
+        //#更新
+        //POST /ims_auto_delete_test_index/1/_update
+        //{
+        //    "doc": {
+        //    "name": "jiaqiangban gaolujie yagao"
+        //  }
+        //}
+        //
+        //
+        //#更新 如果对同一个index/type/id 使用 PUT，后面的数据会覆盖前面的数据（save操作）
+        //PUT /ims_auto_delete_test_index/_doc/1
+        //{
+        //    "accountCode": "test",
+        //  "accountName": "市"
+        //}
+        //
+        //#删除文档
+        //DELETE /ims_auto_delete_test_index/_doc/2
+        //
+        //
+        //## 查询索引结构
+        //GET /ims_eb_spu_change_stock/_mapping
+        //
+        //
+        //# 统计条数
+        //GET  ims_eb_spu_change_stock/_count
+        //{
+        //}
+        //
+        //
+        //
+        //POST /_analyze
+        //{
+        //    "analyzer": "standard",
+        //  "text": "我们看下实际的重量，然后重新更新一下这些数据要不然 我们后续的数据都有问题的"
+        //}
+        //
+        //#批量更新
+        //POST /_bulk
+        //{"delete":{"_index":"test-index", "_type":"test-type", "_id":"1"}}
+        //{"create":{"_index":"test-index", "_type":"test-type", "_id":"2"}}
+        //{"test_field":"test2"}
+        //{"index":{"_index":"test-index", "_type":"test-type", "_id":"1"}}
+        //{"test_field":"test1"}
+        //{"update":{"_index":"test-index", "_type":"test-type", "_id":"3", "_retry_on_conflict":"3"}}
+        //{"doc":{"test_field":"bulk filed 3"}}
+        //
+        //# 有哪些类型的操作可以执行:
+        //#（1）delete：删除一个文档，只要1个json串就可以了
+        //#（2）create：PUT /index/type/id/_create；只创建新文档
+        //#（3）index：普通的put操作，可以是创建文档，也可以是全量替换文档
+        //#（4）update：执行的partial update操作，即 post 更新
+        //
+        //
+        //GET /_search
+        //{
+        //    "query": {
+        //    "fuzzy": {
+        //        "name": "Accha"
+        //    }
+        //  }
+        //}
+        //
+        //# 查看集群配置，ILM周期检查时间默认是10分钟检查一次
+        //GET /_cluster/settings
+        //
+        //# 修改检查策略命令
+        //PUT /_cluster/settings
+        //{
+        //    "transient": {
+        //    "indices.lifecycle.poll_interval": "1m"
+        //  }
+        //}
+        //
+        //
+        //
+        //
+        //
+        //
+        //
+        //
+        //### 5、如何仅保存最近100天的数据？
+        //### 1）delete_by_query设置检索近100天数据；
+        //### 2）执行forcemerge操作，手动释放磁盘空间。
+        //### 删除脚本如下：
+        //
+        //GET /json
+        //{
+        //    "query": {
+        //    "range": {
+        //        "pt": {
+        //            "lt": "now-100d",
+        //        "format": "epoch_millis"
+        //      }
+        //    }
+        //  }
+        //}
+        //
+        //# -XPOST "http://192.168.1.101:9200/logstash_*/_delete_by_query?conflicts=proceed"
+        //
+        //
+        //## merge脚本如下：
+        //
+        //### #!/bin/sh
+        //
+        //POST /_forcemerge?
+        //### only_expunge_deletes=true&max_num_segments=1'
+        //
+        //
+        //
+        //
+        //
+        //
+        //            GET ims_tk_spu_change_stock_test2/_count
+        //{
+        //}
+    }
 }
