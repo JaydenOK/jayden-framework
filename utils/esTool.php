@@ -1,7 +1,12 @@
 <?php
+/**
+ * Elasticsearch工具类
+ * @author https://github.com/JaydenOK
+ */
 
 namespace serv\rapi;
 
+use ctrl\system\esLog;
 use of;
 use Elasticsearch;
 
@@ -332,6 +337,11 @@ class esTool
                         }
                     }
                     if (!empty($newItem)) {
+                        //date时间类型说明：
+                        //ES底层存储的是Unix时间戳，并且录入的时间是有时区信息的，定义字段加了格式化没有时区时，按0时区保存；因此存储和查询都用定义的格式串是没有问题的
+                        //如定义createTime字段date类型:{"createTime":{"type":"date","format":"yyyy-MM-dd HH:mm:ss"}},
+                        //存储2024-01-08 12:00:00, 实际保存为:2024-01-08T12:00:00.000Z, 但查询可以用大于、等于2024-01-08 12:00:00查询到
+                        //sql查询用2024-01-08 12:00:00，但其返回为2024-01-08T12:00:00.000Z格式
                         $must[] = ['range' => [$name => $newItem]];
                     }
                 } else if ($firstKey == 'like_keyword') {
@@ -401,11 +411,12 @@ class esTool
      * 描述: 查看信息
      * 作者: Jayden
      */
-    public static function getInfo()
+    public static function testGetInfo()
     {
         $node = of::config('env.esLog');
         $client = Elasticsearch\ClientBuilder::create()->setHosts($node)->build();
         $info = $client->info();
+        header("content-type: application/json");
         echo json_encode($info);
     }
 
@@ -421,7 +432,7 @@ class esTool
     }
 
     /**
-     * 描述: 保存记录，_id存在则更新，不存在则新增(覆盖原有数据更新)
+     * 描述: 保存记录，不存在则新增，存在_id则完全覆盖更新
      * $data['_id'] : es主键，字段不插入文档
      * 作者: Jayden
      */
@@ -490,7 +501,7 @@ class esTool
 
     /**
      * 描述: 批量插入记录
-     * replace 主键_id记录存在是否替换 true (index存在覆盖更新), false(create存在则插入失败)
+     * replace 主键_id记录存在是否替换 ，true (index存在覆盖更新), false(create存在则插入失败)
      * （2）create：PUT /index/type/id/_create；只创建新文档
      * （3）index：普通的put操作，可以是创建文档，也可以是全量替换文档
      *  https://www.elastic.co/guide/en/elasticsearch/reference/current/docs-bulk.html
@@ -541,55 +552,68 @@ class esTool
     }
 
     /**
-     * 描述: 查找一个记录(基于主键_id，或唯一键查询)
-     * {"_id": "t1"}
+     * 描述: 查找一个记录
+     * {"_id": "t1","imsUUID":"123"}
      * 作者: Jayden
      */
     public static function findOne($node, $index, $queryBody, $sourceFields = true)
     {
         if (empty($queryBody)) {
-            return [];
+            return false;
         }
-        $client = Elasticsearch\ClientBuilder::create()
-            ->setHosts($node)
-            ->build();
-        $body = [];
-        $body['query'] = self::expandQuery($queryBody);
-        $pageSize = 1;
-        $page = 1;
-        if (!empty($queryBody['_id'])) {
-            //有主键查询，get()只能根据主键id查
-            $params = ['id' => $queryBody['_id'], 'index' => $index];
-            if (!empty($sourceFields)) {
-                $params['_source'] = $sourceFields;
+        try {
+            $client = Elasticsearch\ClientBuilder::create()
+                ->setHosts($node)
+                ->build();
+            $body = [];
+            $body['query'] = self::expandQuery($queryBody);
+            $pageSize = 1;
+            $page = 1;
+            if (!empty($queryBody['_id'])) {
+                //有主键查询，get()只能根据主键id查
+                $params = ['id' => $queryBody['_id'], 'index' => $index];
+                if (!empty($sourceFields)) {
+                    $params['_source'] = $sourceFields;
+                }
+                $tempResults = $client->get($params);
+                if (!empty($tempResults['found']) && $tempResults['found'] === true) {
+                    $results = [];
+                    $results['hits']['total']['value'] = 1;
+                    $results['hits']['hits'] = [$tempResults];
+                }
+            } else {
+                //无主键查询
+                $params = [
+                    'index' => $index,
+                    'body' => $body,
+                    '_source' => $sourceFields,
+                    'from' => ($page - 1) * $pageSize,
+                    'size' => $pageSize
+                ];
+                $results = $client->search($params);
             }
-            $tempResults = $client->get($params);
-            if (!empty($tempResults['found']) && $tempResults['found'] === true) {
-                $results = [];
-                $results['hits']['total']['value'] = 1;
-                $results['hits']['hits'] = [$tempResults];
-            }
-        } else {
-            //无主键查询
-            $params = [
-                'index' => $index,
-                'body' => $body,
-                '_source' => $sourceFields,
-                'from' => ($page - 1) * $pageSize,
-                'size' => $pageSize
+            $return = [
+                'total' => $results['hits']['total']['value'] ?? 0,       //总记录数
+                'records' => [],    //当前返回记录数
             ];
-            $results = $client->search($params);
-        }
-        $return = [
-            'total' => $results['hits']['total']['value'] ?? 0,       //总记录数
-            'records' => [],    //当前返回记录数
-        ];
-        if (isset($results['hits']) && !empty($results['hits'])) {
-            foreach ($results['hits']['hits'] as $row) {
-                $return['records'][] = array_merge(['_id' => $row['_id']], $row['_source']);
+            if (isset($results['hits']) && !empty($results['hits'])) {
+                foreach ($results['hits']['hits'] as $row) {
+                    $return['records'][] = array_merge(['_id' => $row['_id']], $row['_source']);
+                }
             }
+            return $return;
+        } catch (\Exception $e) {
+            self::$errorMessage = $e->getMessage();
+            $errorMessage = json_decode(self::$errorMessage, true);
+            if (isset($errorMessage['found']) && $errorMessage['found'] === false) {
+                //未找到记录返回
+                return [
+                    'total' => 0,
+                    'records' => [],
+                ];
+            }
+            return false;
         }
-        return $return;
     }
 
     /**
@@ -671,96 +695,123 @@ class esTool
     }
 
     /**
-     * 描述 : 删除文档，与查询文档类型 deleteByQuery
+     * 描述 : 删除文档，指定索引名称和文档_id
+     * 对文档执行的每个写入操作（包括删除）都会导致其版本增加。已删除文档的版本号在删除后仍会在短时间内保留，以便控制并发操作。
+     * 已删除文档的版本保持可用的时间长度由index.gc_deletes索引设置确定，默认为 60 秒。
+     * $refresh = false(默认，更改短时间后可见), true（使更改立即刷新生效）,  wait_for (等待请求所做的更改通过刷新可见，然后再回复)
      * 作者 : Jayden
      */
-    public static function deleteDocument()
+    public static function delete($node, $index, $_id, $refresh = false)
     {
-        $input = file_get_contents("php://input");
-        $inputArr = json_decode($input, true);
-        if (empty($inputArr['node']) || empty($inputArr['index']) || empty($inputArr['body'])) {
-            return ['info' => 'index err'];
+        try {
+            $client = Elasticsearch\ClientBuilder::create()->setHosts($node)->build();
+            $params = [
+                'index' => $index,
+                'id' => $_id,
+            ];
+            if (!empty($refresh)) {
+                $params['refresh'] = $refresh;
+            }
+            $result = $client->delete($params);
+            return isset($result['result']) && $result['result'] == 'deleted';
+        } catch (\Exception $e) {
+            self::$errorMessage = $e->getMessage();
+            $errorMessage = json_decode(self::$errorMessage, true);
+            if (isset($errorMessage['result']) && $errorMessage['result'] === 'not_found') {
+                //不存在记录返回
+                return true;
+            }
+            return false;
         }
-        $node = of::config('env.' . $inputArr['node']);
-        if (empty($node) || !is_array($node)) {
-            return ['info' => 'node not found'];
+    }
+
+    /**
+     * 描述 : 删除与指定查询匹配的文档（与查询文档类似条件）
+     *
+     * 当您提交按查询删除请求时，Elasticsearch 会在开始处理请求时获取数据流或索引的快照，并使用 internal版本控制删除匹配的文档。
+     * 如果在拍摄快照和处理删除操作之间文档发生更改，则会导致版本冲突并且删除操作失败。
+     * 版本等于 0 的文档无法使用按查询删除来删除，因为internal版本控制不支持 0 作为有效版本号。
+     * 在处理按查询删除请求时，Elasticsearch 会顺序执行多个搜索请求以查找要删除的所有匹配文档。对每批匹配的文档执行批量删除请求。
+     * 如果搜索或批量请求被拒绝，请求最多会重试 10 次，并呈指数回退。如果达到最大重试限制，处理将停止并在响应中返回所有失败的请求。任何成功完成的删除请求仍然保留，不会回滚。
+     * 您可以选择对版本冲突进行计数，而不是通过设置为conflicts来停止并返回proceed。
+     * 请注意，如果您选择计算版本冲突，则操作可能会尝试从源中删除更多文档，max_docs直到成功删除max_docs文档或遍历源查询中的每个文档为止
+     *
+     * conflicts=proceed 可选，版本冲突是否继续执行，默认取消abort (abort,proceed)
+     * wait_for_completion=false 可选，通过查询异步运行删除
+     * max_docs 可选，要处理的最大文档数。默认为所有文档
+     * 作者 : Jayden
+     */
+    public static function deleteByQuery($node, $index, $queryBody, $extraParams = [])
+    {
+        $body = [];
+        if (!empty($queryBody)) {
+            $body['query'] = self::expandQuery($queryBody);
+        }
+        if (empty($body)) {
+            return false;
         }
         $client = Elasticsearch\ClientBuilder::create()->setHosts($node)->build();
         $params = [
-            'index' => $inputArr['index'],
-            'body' => $inputArr['body'],
+            'index' => $index,
+            'body' => $body,
         ];
+        if (!empty($extraParams)) {
+            $params = array_merge($extraParams, $params);
+        }
         $result = $client->deleteByQuery($params);
-        return $result;
+        //$client->indices()->forcemerge();       //执行forceMerge合并，手动释放磁盘空间
+        //return $result['deleted'] ?? 0;
+        return $result['total'] ?? 0;
     }
-
 
     /**
      * 描述 : 新增索引
      * 作者 : Jayden
      * 访问方式 : {{host}}/demo/?c=jayden_esTool&a=createIndex
      */
-    public static function createIndex()
+    public static function createIndex($node, $index, $mappings, $numberOfShards, $numberOfReplicas = 1)
     {
-        $input = file_get_contents("php://input");
-        $inputArr = json_decode($input, true);
-        if (empty($inputArr['node']) || empty($inputArr['index'])) {
-            return ['info' => 'index err'];
-        }
-        $node = of::config('env.' . $inputArr['node']);
-        if (empty($node) || !is_array($node)) {
-            return ['info' => 'node not found'];
-        }
         $client = Elasticsearch\ClientBuilder::create()->setHosts($node)->build();
-        $inIndex = $client->indices()->exists(['index' => $inputArr['index']]);
-        //索引不存在，创建索引
-        if (empty($inIndex)) {
-            $client->indices()->create(['index' => $inputArr['index'], //索引名称
-                    'body' => [
-                        'settings' => [ //配置
-                            'number_of_shards' => $inputArr['number_of_shards'] ?? 2,//主分片数，注意：索引的主分片primary shards定义好后，后面不能做修改。
-                            'number_of_replicas' => 1 //主分片的副本数
-                        ],
-                        'mappings' => [  //映射结构
-                            'properties' => $inputArr['mappings']['properties'] ?? [],
-                        ],
-                    ]
-                ]
-            );
-            return ['code' => 200, 'index' => $inputArr['index'], 'info' => '创建索引成功'];
-        } else {
-            return ['code' => 401, 'index' => $inputArr['index'], 'info' => '索引已存在'];
+        $exists = $client->indices()->exists(['index' => $index]);
+        if (!empty($exists)) {
+            return false;
         }
+        //索引不存在，创建索引
+        $params = [
+            'index' => $index,
+            'body' => [
+                'settings' => [
+                    'number_of_shards' => $numberOfShards ?? 4,     //主分片数
+                    'number_of_replicas' => $numberOfReplicas ?? 1,   //每个主分片的副本数
+                ],
+                'mappings' => [
+                    'properties' => $mappings['properties'] ?? [],
+                ],
+            ]
+        ];
+        $res = $client->indices()->create($params);
+        return $res;
     }
 
     /**
-     * 描述 : 删除
+     * 描述 : 删除索引
      * 作者 : Jayden
      */
-    public static function deleteIndex()
+    public static function deleteIndex($node, $index)
     {
-        $input = file_get_contents("php://input");
-        $inputArr = json_decode($input, true);
-        if (empty($inputArr['node']) || empty($inputArr['index'])) {
-            return ['info' => 'index err'];
-        }
-        $node = of::config('env.' . $inputArr['node']);
-        if (empty($node) || !is_array($node)) {
-            return ['info' => 'node not found'];
-        }
         $client = Elasticsearch\ClientBuilder::create()->setHosts($node)->build();
-        $res = $client->indices()->delete(['index' => $inputArr['index']]);  //删除索引
-        return ['index' => $inputArr['index'], 'info' => '删除索引成功', 'res' => $res];
+        $res = $client->indices()->delete(['index' => $index]);
+        return $res;
     }
 
     /**
      * 描述 : getMapping
      * 作者 : Jayden
      */
-    public static function getMapping($node, $indexName)
+    public static function getMapping($node, $index)
     {
         $client = Elasticsearch\ClientBuilder::create()->setHosts($node)->build();
-        $res = $client->indices()->getMapping(['index' => $indexName]);
+        $res = $client->indices()->getMapping(['index' => $index]);
         return $res;
     }
 
@@ -768,11 +819,11 @@ class esTool
      * 描述 : putMapping更新es索引
      * 作者 : Jayden
      */
-    public static function putMapping($node, $indexName, $properties)
+    public static function putMapping($node, $index, $properties)
     {
         $client = Elasticsearch\ClientBuilder::create()->setHosts($node)->build();
         $params = [
-            'index' => $indexName,
+            'index' => $index,
             'body' => [
                 'properties' => $properties
             ],
@@ -795,13 +846,12 @@ class esTool
     public static function createLifecyclePolicies($node, $policiesName, $dayConfig)
     {
         $params = [
-            //索引生命周期的名字
-            'policy' => $policiesName,
+            'policy' => $policiesName,  //索引生命周期的名称
             'body' => [
                 'policy' => [
                     'phases' => [
                         'hot' => [
-                            "min_age" => "0ms", //如果创建的策略Policy 具有未指定 min_age 的热阶段，min_age 默认为 0 ms。
+                            "min_age" => "0ms",     //如果创建的策略Policy 具有未指定 min_age 的热阶段，min_age 默认为 0 ms。
                             "actions" => [
                                 //滚动创建新索引的触发条件
                                 "rollover" => [
@@ -851,13 +901,13 @@ class esTool
      * $policiesName 管理的索引生命周期策略
      * 作者 : Jayden
      */
-    public static function createIndexTemplate($node, $policiesName, $indexName, $mappings)
+    public static function createIndexTemplate($node, $policiesName, $index, $mappings)
     {
         $params = [
-            'name' => $indexName,
+            'name' => $index,
             'body' => [
                 'index_patterns' => [
-                    $indexName . "*"
+                    $index . "*"
                 ],
                 'data_stream' => new \stdClass(),   //索引到数据流的每个文档都必须包含一个@timestamp映射为date或date_nanos字段类型的字段。如果索引模板未指定字段的映射@timestamp，Elasticsearch 会映射 @timestamp为date具有默认选项的字段。
                 'template' => [
