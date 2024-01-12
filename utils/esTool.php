@@ -834,13 +834,14 @@ class esTool
 
     /**
      * 描述 : 创建索引周期
-     * $policiesName = '7d-2d-2d-delete-new';
-     * $dayConfig = [
-     * 'hot' => '30d',
-     * 'warm' => '40d',
-     * 'cold' => '50d',
-     * 'delete' => '60d',
-     * ];
+     * 保留30天的数据。30天后自动删除配置：
+     * $policiesName = 'auto_delete_after_30_days';
+     * //        $dayConfig = [
+     * //            'hot' => '3d',
+     * //            'warm' => '15d',
+     * //            'cold' => '30d',
+     * //            'delete' => '33d',
+     * //        ];
      * 作者 : Jayden
      */
     public static function createLifecyclePolicies($node, $policiesName, $dayConfig)
