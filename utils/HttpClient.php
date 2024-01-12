@@ -197,7 +197,6 @@ class HttpClient
      */
     public function execute()
     {
-        $this->latency = 0;
         $ch = curl_init();
         if (isset($this->usernamePassword)) {
             curl_setopt($ch, CURLOPT_USERPWD, $this->usernamePassword);
@@ -241,6 +240,4 @@ class HttpClient
         $this->latency = round($time * 1000);
         return $this->responseBody;
     }
-
-
 }

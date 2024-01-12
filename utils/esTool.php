@@ -899,6 +899,7 @@ class esTool
     /**
      * 描述 : 创建索引模版
      * $policiesName 管理的索引生命周期策略
+     * 使用data_stream管理索引模板，模板$mappings需增加字段: "@timestamp": {"type": "date","format": "yyyy-MM-dd HH:mm:ss"}
      * 作者 : Jayden
      */
     public static function createIndexTemplate($node, $policiesName, $index, $mappings)
