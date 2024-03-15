@@ -37,5 +37,25 @@ class FileUtil
         }
     }
 
-
+    /**
+     * 创建zip文档
+     * @param $destinationZip
+     * @param $sourceFileArr
+     * @return bool
+     */
+    public function createZipByFiles($destinationZip, $sourceFileArr)
+    {
+        // 创建新的 ZipArchive 对象
+        $zip = new \ZipArchive();
+        if ($zip->open($destinationZip, \ZipArchive::CREATE) === true) {
+            // 添加源文件到压缩包
+            foreach ($sourceFileArr as $filePath) {
+                $zip->addFile($filePath, basename($filePath));
+            }
+            $zip->close(); // 关闭压缩包
+            return true;
+        } else {
+            return false;
+        }
+    }
 }

@@ -240,4 +240,21 @@ class HttpClient
         $this->latency = round($time * 1000);
         return $this->responseBody;
     }
+
+    /**
+     * get Client IP
+     * @return mixed|string
+     */
+    public function getClientIP()
+    {
+        $clientIP = '';
+        if (isset($_SERVER['HTTP_CLIENT_IP'])) {
+            $clientIP = $_SERVER['HTTP_CLIENT_IP'];
+        } elseif (isset($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+            $clientIP = $_SERVER['HTTP_X_FORWARDED_FOR'];
+        } elseif (isset($_SERVER['REMOTE_ADDR'])) {
+            $clientIP = $_SERVER['REMOTE_ADDR'];
+        }
+        return $clientIP;
+    }
 }
