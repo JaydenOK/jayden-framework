@@ -104,4 +104,46 @@ class RedisUtil
         }
     }
 
+    //模糊匹配
+    public function scan($pattern, $count = 6000)
+    {
+        //SCAN命令是基于游标的，每次调用后，都会返回一个游标，用于下一次迭代。当游标返回0时，表示迭代结束。
+        //第一次 Scan 时指定游标为 0，表示开启新的一轮迭代，然后 Scan 命令返回一个新的游标，作为第二次 Scan 时的游标值继续迭代，一直到 Scan 返回游标为0，表示本轮迭代结束。
+        $keyArr = [];
+        $redis = new \Redis();
+        while (true) {
+            // $iterator 下条数据的坐标
+            $data = $redis->scan($iterator, $pattern, $count);
+            $keyArr = array_merge($keyArr, $data ?: []);
+
+            if ($iterator === 0) {
+                //迭代结束，未找到匹配
+                break;
+            }
+            if ($iterator === null) {
+                //"游标为null了，重置为0，继续扫描"
+                $iterator = "0";
+            }
+        }
+        $keyArr = array_flip(array_flip($keyArr));
+        return $keyArr;
+    }
+
+    //模糊匹配并删除
+    function redisScan($pattern = null, $count = 6000, $is_del = 1)
+    {
+        $redis = new \Redis();
+        //查出来key之后，若要批量删除，则可以使用redis管道 PIPELINE ，效果是 将多个命令合起来只执行一次，减少redis和客户端的交互时间；
+        //其他批量操作也可以用PIPELINE，下面举个删除的例子：
+        $keyArr = $redis->scan($pattern, $count); // 上面的scan方法
+        if ($is_del) {
+            $pipe = $redis->multi(2);   //使用管道
+            foreach ($keyArr as $key) {
+                $pipe->del($key);
+            }
+            $pipe->exec();
+        } else {
+            return $keyArr ?? [];
+        }
+    }
 }
