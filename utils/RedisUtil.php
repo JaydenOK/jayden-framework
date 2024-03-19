@@ -146,4 +146,54 @@ class RedisUtil
             return $keyArr ?? [];
         }
     }
+
+    //查看第三阶段缓存信息
+    public function testCache()
+    {
+        $keyPrefix = $_REQUEST['keyPrefix'] ?? '';
+        $key = $_REQUEST['key'] ?? '';
+        /**
+         * @var $redis \Redis
+         */
+        $redis = new \Redis();
+        $redis->connect();
+        $redis->auth();
+        if (!empty($key)) {
+            //完全匹配
+            $tempValue = $redis->get($key);
+            echo json_encode($tempValue);
+        } else if (!empty($keyPrefix)) {
+            //模糊匹配
+            $pattern = $keyPrefix;
+            //$cursor = '0';
+            //SCAN命令是基于游标的，每次调用后，都会返回一个游标，用于下一次迭代。当游标返回0时，表示迭代结束。
+            //第一次 Scan 时指定游标为 0，表示开启新的一轮迭代，然后 Scan 命令返回一个新的游标，作为第二次 Scan 时的游标值继续迭代，一直到 Scan 返回游标为0，表示本轮迭代结束。
+            $keyArr = array();
+            $count = 1000;
+            $iterator = null;
+            while (true) {
+                // $iterator 下条数据的数字坐标
+                $data = $redis->scan($iterator, $pattern, $count);
+                $keyArr = array_merge($keyArr, $data ?: []);
+                if ($iterator === 0) {
+                    //迭代结束，未找到匹配
+                    break;
+                }
+                if ($iterator === null) {
+                    //"游标为null了，重置为0，继续扫描"
+                    $iterator = "0";
+                }
+            }
+            $keyArr = array_flip(array_flip($keyArr));
+            $result = [];
+            if (!empty($keyArr)) {
+                foreach ($keyArr as $key) {
+                    $val = $redis->get($key);
+                    $result[$key] = $val;
+                }
+            }
+            echo json_encode($result);
+        }
+        $redis->close();
+    }
 }
