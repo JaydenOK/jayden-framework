@@ -168,13 +168,18 @@ class RedisUtil
             //$cursor = '0';
             //SCAN命令是基于游标的，每次调用后，都会返回一个游标，用于下一次迭代。当游标返回0时，表示迭代结束。
             //第一次 Scan 时指定游标为 0，表示开启新的一轮迭代，然后 Scan 命令返回一个新的游标，作为第二次 Scan 时的游标值继续迭代，一直到 Scan 返回游标为0，表示本轮迭代结束。
-            $keyArr = array();
+            $keyArr = [];
             $count = 1000;
             $iterator = null;
             while (true) {
                 // $iterator 下条数据的数字坐标
-                $data = $redis->scan($iterator, $pattern, $count);
-                $keyArr = array_merge($keyArr, $data ?: []);
+                //$data = $redis->scan($iterator, $pattern, $count);
+                //$keyArr = array_merge($keyArr, $data ?: []);
+                //php7.4改成$iterator引用（数据量大还是会很慢，改用hash数据结构存储，查出来后再遍历）
+                $data = call_user_func_array([$redis, 'scan'], [&$iterator, $pattern, $count]);
+                if (!empty($data)) {
+                    $keyArr = array_merge($keyArr, $data);
+                }
                 if ($iterator === 0) {
                     //迭代结束，未找到匹配
                     break;
