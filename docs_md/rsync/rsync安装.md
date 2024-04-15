@@ -100,7 +100,7 @@ dont compress = *.gz *.tgz *.zip *.z *.Z *.rpm *.deb *.bz2  # 指定哪些文件
 incoming chmod = D755,F755              # 同步的目录及文件权限
 
 [root@localhost wwwroot]# vim /etc/rsyncd.conf  模块配置
-
+```text
 [mysql_pool_concurrency_server_web]   
 path = /root/mysql_pool_concurrency_server_web   
 ignore errors   
@@ -109,7 +109,8 @@ write only = false
 list = false   
 auth users = root   
 secrets file = /etc/rsyncd.passwd   
-incoming chmod = D755,F755   
+incoming chmod = D755,F755
+```
 
 ###################   
 开放防火墙 873端口   
