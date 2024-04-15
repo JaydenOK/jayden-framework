@@ -107,8 +107,7 @@ write only = false
 list = false
 auth users = root
 secrets file = /etc/rsyncd.passwd
-
-
+incoming chmod = D755,F755
 
 ###################
 开放防火墙 873端口
