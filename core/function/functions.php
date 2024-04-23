@@ -936,19 +936,6 @@ function getCallbackQuerySign($param = [])
 {
     //请使用正确的 API_KEY
     $platform = isset($param['platform']) ? $param['platform'] : '';
-    if ($platform == 'android') {
-        $apiKey = '';
-    } else if ($platform == 'ios') {
-        $apiKey = '';
-    } else if ($platform == 'web') {
-        $apiKey = 'c3a39e4eeacf4542d6a488e19037fa45';
-    } else if ($platform == 'pc') {
-        $apiKey = '';
-    } else if ($platform == 'ibos') {
-        $apiKey = '';
-    } else {
-        $apiKey = 'f1027a17a24df7f245e9cbd7dc9c7205';
-    }
 
     //获取一年不过期的时间戳 (原本36000=10小时才过期)
     $param['timestamp'] = time() + 86400 * 365 - 36000;
@@ -986,16 +973,6 @@ function isSignValid()
         }
         if ($params['platform'] == 'android') {
             $key = Env::ANDROID_KEY;
-        } else if ($params['platform'] == 'ios') {
-            $key = Env::IOS_KEY;
-        } else if ($params['platform'] == 'web') {
-            $key = Env::WEB_KEY;
-        } else if ($params['platform'] == 'pc') {
-            $key = Env::PC_KEY;
-        } else if ($params['platform'] == 'ibos') {
-            $key = Env::IBOS_KEY;
-        } else {
-            $key = Env::API_KEY;
         }
         $signMethod = new SignMethod();
         $signMethod->setAuthKey($key);
@@ -1201,7 +1178,7 @@ function checkAuditStatus($str)
     $arr = explode("\n", $str);
     foreach ($arr as $appid) {
         echo $appid, "\n";
-        $url = 'https://api.ibos.cn/callback/site/checkauditstatus?timestamp=1579213394&sign=d86fc574b200a37530979e2344f22ac1';
+        $url = '';
         $json = json_encode(['appid' => $appid]);
         $header = array(
             'Content-Type: application/json; charset=utf-8',
