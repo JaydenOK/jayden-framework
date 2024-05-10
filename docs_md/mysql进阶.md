@@ -162,3 +162,28 @@ CREATE TABLE `eb_publish_attr` (
 /*!50100 PARTITION BY KEY (publishId)
 PARTITIONS 250 */;
 ```
+
+
+```bash
+#根据字段值AND条件筛选
+SELECT
+	`order_skus_extra`.`skuCode`,
+	`order_attr`.`globalOrder`,
+	sum( `pSales` ) AS `pSales`,
+IF
+	( `order_attr`.platformType = 'SM', `order_attr`.`countryCode`, `order_attr`.`platformSite` ) AS platformSite,
+	`order_attr`.`platformSite` AS oldPlatformSite,
+	`order_attr`.`platformType`,
+	`order_attr`.`salesAccount` 
+FROM
+	`order_skus_extra`
+	LEFT JOIN `order_attr` ON `order_skus_extra`.`chunkOrder` = `order_attr`.`chunkOrder` 
+WHERE
+	`order_skus_extra`.`paymentTime` > '2023-11-28 17:50:56' 
+	AND `skuCode` IN ( 'AAD0229573001' ) 
+	AND `order_attr`.`chunkState` <= 80 AND `order_attr`.`wareCode` NOT IN ( 'WFS', 'JFS' ) AND IF ( `order_attr`.`platformType` = 'LZ' AND `order_skus_extra`.`paymentTime` >= '2022-10-10 00:00:00' 
+		AND `order_skus_extra`.`paymentTime` <= '2022-10-11 23:59:59',
+		'',
+	1 
+	)
+```
