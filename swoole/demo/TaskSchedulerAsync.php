@@ -1,5 +1,7 @@
 <?php
 
+use app\docs_md\note\php\DB;
+
 /**
  * Class TaskScheduler
  */
