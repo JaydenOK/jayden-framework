@@ -24,7 +24,7 @@ class esTool
 
     /*
      * 描述: 获取ES客户端连接
-     * 
+     * 作者: Jayden
      * @return Elasticsearch\Client|mixed
      */
     public static function getEsClient($nodes, $usePool = false)
@@ -48,7 +48,7 @@ class esTool
 
     /**
      * 描述: 设置使用连接池单例
-     * 
+     * 作者: Jayden
      */
     public static function setUsePool($usePool = true)
     {
@@ -59,7 +59,7 @@ class esTool
      * 描述: 执行ES-SQL查询
      * $size : 每次请求ES返回的数量，非返回总数限制
      * $maxLoop 最大循环次数，null不限制
-     * 
+     * 作者: Jayden
      */
     public static function esSearchBySql($sql, $nodes = [], $size = 2000, $maxLoop = null)
     {
@@ -111,7 +111,7 @@ class esTool
      * @param $sourceFields mixed 指定返回字段 ，true默认返回所有    $sourceFields = ['imsUUID','accountCode','accountId'];
      * @param $pageSize int 每页返回数
      * @param $page int 查询起始页，默认第一页
-     * @param $sortArr mixed 排序  $sortArr = 'createTime DESC, spu ASC';
+     * @param $sortArr mixed 排序  $sortArr = ['updateTime' => 'desc', 'id' => 'asc']; 或 $sortArr = 'updateTime DESC, spu ASC';
      * @return array
      *
      * //$queryBody = [
@@ -147,7 +147,7 @@ class esTool
      * //        'like' => '00004',
      * //    ],
      * //    'accountName2' => [
-     * //        'like' => '10tobebet',
+     * //        'like_text' => '10tobebet',
      * //    ],
      * //    'accountName3' => [
      * //        'not_like' => '10tobebet',
@@ -161,12 +161,10 @@ class esTool
      * //    'updateTime' => 'desc',
      * //    'id' => 'asc',
      * //];
-     * 
+     * 作者: Jayden
      */
     public static function esSearch($node, $index, $queryBody, $sourceFields = true, $pageSize = 10, $page = 1, $sortArr = [])
     {
-
-
         $client = self::getEsClient($node);
         $page = intval($page);
         $pageSize = intval($pageSize);
@@ -216,7 +214,7 @@ class esTool
     /**
      * 描述: scroll翻页搜索模式（适用于客户端滚动查询，执行简单，无法反映翻页期间数据的变动）
      * 使用返回的scrollId继续查询，当返回结果集数小于pageSize时，停止查询
-     * 
+     * 作者: Jayden
      */
     public static function esSearchScroll($node, $index, $queryBody, $sourceFields = true, $pageSize = 10, $page = 1, $sortArr = [], $scrollId = null)
     {
@@ -292,7 +290,7 @@ class esTool
 
     /**
      * 描述: search after翻页搜索模式（能实时查询、效率高，但操作麻烦，必须有排序字段，每次要传上次返回结果集的最后排序值）
-     * 
+     * 作者: Jayden
      */
     public static function esSearchAfter($node, $index, $queryBody, $sourceFields = true, $pageSize = 10, $page = 1, $sortArr = [])
     {
@@ -387,7 +385,7 @@ class esTool
      * //        'like' => '00004',
      * //    ],
      * //    'accountName2' => [
-     * //        'like' => '10tobebet',
+     * //        'like_text' => 'my',
      * //    ],
      * //    'accountName3' => [
      * //        'not_like' => '10tobebet',
@@ -398,9 +396,9 @@ class esTool
      * //];
      *
      * $onlyNestQuery 是否只有嵌套结构查询
-     * 
+     * 作者: Jayden
      */
-    protected static function expandQuery($queryBody, $onlyNestQuery = false)
+    public static function expandQuery($queryBody, $onlyNestQuery = false)
     {
         $query = [];
         $must = $mustNot = $should = [];
@@ -505,7 +503,7 @@ class esTool
 
     /**
      * 描述 : 排序
-     * 作者 : 
+     * 作者 : Jayden
      */
     protected static function bodySort($sortArr)
     {
@@ -532,7 +530,7 @@ class esTool
 
     /**
      * 描述: 查看信息
-     * 
+     * 作者: Jayden
      */
     public static function testGetInfo()
     {
@@ -545,9 +543,9 @@ class esTool
 
     /**
      * 描述 : 原始查找
-     * 作者 : 
+     * 作者 : Jayden
      */
-    public function searchRaw($node, $params)
+    public static function searchRaw($node, $params)
     {
         $client = ClientBuilder::create()->setHosts($node)->build();
         $response = $client->search($params);
@@ -557,7 +555,7 @@ class esTool
     /**
      * 描述: 保存记录，不存在则新增，存在_id则完全覆盖更新
      * $data['_id'] : es主键，字段不插入文档
-     * 
+     * 作者: Jayden
      */
     public static function save($node, $index, $data)
     {
@@ -584,7 +582,7 @@ class esTool
     /**
      * 描述: 插入一条记录，存在则失败，
      * $data['_id'] : es主键，字段不插入文档
-     * 
+     * 作者: Jayden
      */
     public static function insertOne($node, $index, $data, $throwException = false)
     {
@@ -630,7 +628,7 @@ class esTool
      * （2）create：PUT /index/type/id/_create；只创建新文档
      * （3）index：普通的put操作，可以是创建文档，也可以是全量替换文档
      *  https://www.elastic.co/guide/en/elasticsearch/reference/current/docs-bulk.html
-     * 
+     * 作者: Jayden
      */
     public static function insertMany($node, $index, $data, $replace = true)
     {
@@ -681,7 +679,7 @@ class esTool
      * queryBody: 查询条件，{"_id": "t1","imsUUID":"123"}
      * sourceFields : 指定返回字段，true所有
      * isLifecycleIndex: 是否为周期索引查询， true 周期索引返回记录对应索引id
-     * 
+     * 作者: Jayden
      */
     public static function findOne($node, $index, $queryBody, $sourceFields = true, $isLifecycleIndex = false)
     {
@@ -746,7 +744,7 @@ class esTool
      * 描述: 更新记录。_id不存在不更新，可指定更新部分数据
      * 更新索引模版，需先查到_id所在的当前索引名，然后用当前索引名更新信息
      * @var $retryOnConflict int 并发冲突，重试次数
-     * 
+     * 作者: Jayden
      */
     public static function updateOne($node, $index, $data, $id, $retryOnConflict = null)
     {
@@ -777,7 +775,7 @@ class esTool
 
     /**
      * 描述: 批量更新，根据id批量更新
-     * 
+     * 作者: Jayden
      */
     public static function updateMany($node, $index, $data)
     {
@@ -821,7 +819,7 @@ class esTool
 
     /**
      * 描述: 指定条件更新
-     * 
+     * 作者: Jayden
      */
     public static function updateByQuery($node, $index, $updateData, $queryBody)
     {
@@ -862,7 +860,7 @@ class esTool
      * 对文档执行的每个写入操作（包括删除）都会导致其版本增加。已删除文档的版本号在删除后仍会在短时间内保留，以便控制并发操作。
      * 已删除文档的版本保持可用的时间长度由index.gc_deletes索引设置确定，默认为 60 秒。
      * $refresh = false(默认，更改短时间后可见), true（使更改立即刷新生效）,  wait_for (等待请求所做的更改通过刷新可见，然后再回复)
-     * 作者 : 
+     * 作者 : Jayden
      */
     public static function delete($node, $index, $_id, $refresh = false)
     {
@@ -890,7 +888,7 @@ class esTool
 
     /**
      * 描述 : 删除多个文档
-     * 作者 : 
+     * 作者 : Jayden
      */
     public static function deleteMany($node, $index, $queryBody, $extraParams = [])
     {
@@ -911,7 +909,7 @@ class esTool
      * conflicts=proceed 可选，版本冲突是否继续执行，默认取消abort (abort,proceed)
      * wait_for_completion=false 可选，通过查询异步运行删除
      * max_docs 可选，要处理的最大文档数。默认为所有文档
-     * 作者 : 
+     * 作者 : Jayden
      */
     public static function deleteByQuery($node, $index, $queryBody, $extraParams = [])
     {
@@ -942,7 +940,7 @@ class esTool
 
     /**
      * 描述 : 删除ES索引的所有文档数据（重建索引最好）
-     * 作者 : 
+     * 作者 : Jayden
      */
     public static function deleteAll($node, $index)
     {
@@ -961,8 +959,8 @@ class esTool
 
     /**
      * 描述 : 新增索引
-     * 作者 : 
-     * 访问方式 : {{host}}/demo/?c=_esTool&a=createIndex
+     * 作者 : Jayden
+     * 访问方式 : {{host}}/demo/?c=jayden_esTool&a=createIndex
      */
     public static function createIndex($node, $index, $mappings, $numberOfShards, $numberOfReplicas = 1)
     {
@@ -976,7 +974,7 @@ class esTool
             'index' => $index,
             'body' => [
                 'settings' => [
-                    'number_of_shards' => $numberOfShards ?? 4,     //主分片数
+                    'number_of_shards' => $numberOfShards ?? 8,     //主分片数
                     'number_of_replicas' => $numberOfReplicas ?? 1,   //每个主分片的副本数
                 ],
                 'mappings' => [
@@ -990,7 +988,7 @@ class esTool
 
     /**
      * 描述 : 删除索引
-     * 作者 : 
+     * 作者 : Jayden
      */
     public static function deleteIndex($node, $index)
     {
@@ -1001,7 +999,7 @@ class esTool
 
     /**
      * 描述 : getMapping
-     * 作者 : 
+     * 作者 : Jayden
      */
     public static function getMapping($node, $index)
     {
@@ -1012,7 +1010,7 @@ class esTool
 
     /**
      * 描述 : putMapping更新es索引
-     * 作者 : 
+     * 作者 : Jayden
      */
     public static function putMapping($node, $index, $properties)
     {
@@ -1029,7 +1027,7 @@ class esTool
 
     /**
      * 描述 : 查看索引周期
-     * 作者 : 
+     * 作者 : Jayden
      */
     public static function getLifecyclePolicies($node, $policy)
     {
@@ -1040,14 +1038,20 @@ class esTool
 
     /**
      * 描述 : 创建索引周期
-     * $policiesName = '7d-2d-2d-delete-new';
+     * 作者 : Jayden
+     *
+     * @param $node array 节点
+     * @param $policiesName string 索引生命周期的名称
+     * @param $dayConfig array 滚动天数配置
+     * @return array
+     *
+     * 停留天数30-10-10-10配置：
      * $dayConfig = [
-     * 'hot' => '30d',
-     * 'warm' => '40d',
-     * 'cold' => '50d',
-     * 'delete' => '60d',
+     *  'hot' => '30d',
+     *  'warm' => '40d',
+     *  'cold' => '50d',
+     *  'delete' => '60d',
      * ];
-     * 作者 : 
      */
     public static function createLifecyclePolicies($node, $policiesName, $dayConfig)
     {
@@ -1059,7 +1063,7 @@ class esTool
                         'hot' => [
                             "min_age" => "0ms",     //如果创建的策略Policy 具有未指定 min_age 的热阶段，min_age 默认为 0 ms。
                             "actions" => [
-                                //滚动创建新索引的触发条件
+                                //rollover：滚动创建新索引的触发条件，hot决定滚动索引保留的天数
                                 "rollover" => [
                                     "max_age" => "{$dayConfig['hot']}",       //历史索引保留时间的判断条件
                                     //"max_size" => "500gb",                    //当索引达到一定大小时触发翻转。这是索引中所有主分片的总大小。副本不计入最大索引大小。
@@ -1103,8 +1107,22 @@ class esTool
     }
 
     /**
+     * 描述 : 移除索引关联的索引生命周期策略
+     * 作者 : Jayden
+     */
+    public static function removeLifecyclePolicies($node, $index)
+    {
+        $params = [
+            'index' => $index,
+        ];
+        $client = ClientBuilder::create()->setHosts($node)->build();
+        $res = $client->ilm()->removePolicy($params);
+        return $res;
+    }
+
+    /**
      * 描述 : 查看索引模版
-     * 作者 : 
+     * 作者 : Jayden
      */
     public static function getIndexTemplate($node, $name, $flatSettings = false)
     {
@@ -1122,7 +1140,7 @@ class esTool
 
     /**
      * 描述 : 删除索引模版
-     * 作者 : 
+     * 作者 : Jayden
      */
     public static function deleteIndexTemplate($node, $name)
     {
@@ -1139,7 +1157,7 @@ class esTool
 
     /**
      * 描述 : 删除索引流
-     * 作者 : 
+     * 作者 : Jayden
      */
     public static function deleteDataStream($node, $name)
     {
@@ -1156,7 +1174,7 @@ class esTool
 
     /**
      * 描述 : 查看数据流信息
-     * 作者 : 
+     * 作者 : Jayden
      */
     public static function getDataStream($node, $name, $expandWildcards = null)
     {
@@ -1172,7 +1190,7 @@ class esTool
      * 描述 : 查看索引配置信息
      * $index: _all 匹配所有
      * $name: 筛选配置项，* 匹配所有
-     * 作者 : 
+     * 作者 : Jayden
      */
     public static function getSettings($node, $index, $name)
     {
@@ -1189,11 +1207,44 @@ class esTool
     }
 
     /**
-     * 描述 : 创建索引模版
-     * $policiesName 管理的索引生命周期策略
-     * 作者 : 
+     * 描述 : 设置索引配置信息
+     * $index:
+     * $name: 筛选配置项，* 匹配所有
+     * 作者 : Jayden
      */
-    public static function createIndexTemplate($node, $policiesName, $index, $mappings)
+    public static function putSettings($node, $index, $settingConfig)
+    {
+        $params = [
+            'index' => [
+                $index,
+            ],
+            'body' => [
+                'settings' => $settingConfig,
+            ],
+        ];
+        $res = ClientBuilder::create()->setHosts($node)->build()->indices()->putSettings($params);
+        return $res;
+    }
+
+    /**
+     * 描述 : 创建索引模版（每个关联索引独立创建）
+     * 作者 : Jayden
+     *
+     * 索引模板定义了您在创建新索引时可以自动应用的设置和映射 。Elasticsearch 根据与索引名称匹配的索引模式将模板应用于新索引。
+     * 索引模板仅在索引创建期间应用。对索引模板的更改不会影响现有索引(已生成的索引)。创建索引API 请求中指定的设置和映射将覆盖索引模板中指定的任何设置或映射。
+     * 可组合模板始终优先于旧版模板。如果没有可组合模板与新索引匹配，则匹配的旧版模板将按其顺序应用。
+     *
+     * 每个数据流都有一个匹配的索引模板
+     *
+     * @param $node array 节点
+     * @param $policiesName string 关联的索引生命周期策略名称
+     * @param $index string 创建索引名
+     * @param $numberOfShards int 主分片数
+     * @param $numberOfReplicas int 副本数
+     * @param $mappings array 索引结构
+     * @return array
+     */
+    public static function createIndexTemplate($node, $policiesName, $index, $numberOfShards, $numberOfReplicas, $mappings)
     {
         $params = [
             'name' => $index,
@@ -1205,8 +1256,8 @@ class esTool
                 'template' => [
                     'settings' => [ //配置
                         "index.lifecycle.name" => $policiesName,  //索引生命周期，要先创建
-                        "index.number_of_shards" => 12,
-                        "index.number_of_replicas" => 1,
+                        "index.number_of_shards" => $numberOfShards,    //主
+                        "index.number_of_replicas" => $numberOfReplicas,
                         "index.translog.durability" => "async",
                         "index.translog.sync_interval" => "120s",
                         "index.translog.flush_threshold_size" => "1024mb",
@@ -1215,6 +1266,7 @@ class esTool
                     'mappings' => $mappings,
                 ],
                 'composed_of' => [],
+                //"priority" => 500,      //优先级高于200避免与内置模板冲突
             ]
         ];
         $client = ClientBuilder::create()->setHosts($node)->build();
@@ -1223,50 +1275,8 @@ class esTool
     }
 
     /**
-     * 描述 : 分组查询，简单搜索按字段汇总、排序
-     * $queryBody 与查询相同
-     * $groupField 分组统计字段： ["accountCode","siteCode"]
-     * $limit 返回前几个
-     * 作者 : 
-     */
-    public static function esSearchAggs($node, $index, $queryBody, $groupField = [], $limit = 10)
-    {
-        $body = [];
-        if (!empty($queryBody)) {
-            $body['query'] = self::expandQuery($queryBody);
-        }
-        if (!empty($groupField)) {
-            $body['aggs'] = self::aggs($groupField, $limit);
-        }
-        $params = [
-            'index' => $index,
-            'body' => $body,
-            'size' => 0,
-        ];
-        $client = self::getEsClient($node);
-        $results = $client->search($params);
-        $return = [
-            'total' => $countRes['count'] ?? 0,
-            'records' => [],
-        ];
-        if (isset($results['aggregations']) && !empty($results['aggregations'])) {
-            foreach ($results['aggregations'] as $key => $row) {
-                //$key : accountCode##0
-                $keyArr = explode('##', $key);
-                $gField = $keyArr[0] ?? $key;
-                $temp = [];
-                foreach ($row['buckets'] as $item) {
-                    $temp[$item['key']] = $item['doc_count'];
-                }
-                $return['records'][$gField] = $temp;
-            }
-        }
-        return $return;
-    }
-
-    /**
      * 描述 : 分组
-     * 作者 : 
+     * 作者 : Jayden
      */
     private static function aggs($groupField, $limit = 10)
     {
@@ -1292,8 +1302,157 @@ class esTool
     }
 
     /**
+     * 执行分组条数统计查询
+     *
+     * @param mixed $node 节点
+     * @param string $index 索引名
+     * @param array $queryBody 查询条件
+     * @param array $groupFields 分组字段,可以是字符串或数组 ["accountCode", "state", "remark"]
+     * @param int $size 返回的分组数量
+     * @param string $sortField 排序字段(默认为文档数)
+     * @param string $sortOrder 排序顺序(默认为desc)
+     * @return array 分组查询结果
+     */
+    public static function esSearchGroupByCount($node, $index, $queryBody, $groupFields = [], $size = 10, $sortField = '_count', $sortOrder = 'desc', $returnTree = false)
+    {
+        if (empty($groupFields)) {
+            return [];
+        }
+        $client = self::getEsClient($node);
+        $params = [
+            'index' => $index,
+            'body' => [
+                'size' => 0,
+                'aggs' => self::buildAggregations($groupFields, $sortField, $sortOrder, $size)
+            ],
+        ];
+        if (!empty($queryBody)) {
+            $params['body']['query'] = self::expandQuery($queryBody);
+        }
+        $response = $client->search($params);
+        $result = [];
+        if ($returnTree) {
+            self::extractBuckets($response['aggregations'][$groupFields[0]]['buckets'], $result, $groupFields, 0);
+        } else {
+            self::flattenBuckets($response['aggregations'][$groupFields[0]]['buckets'], $result, $groupFields, [], $sortField);
+        }
+        return $result;
+    }
+
+    /**
+     * 描述 : 构建分组信息
+     * 作者 : Jayden
+     */
+    protected static function buildAggregations($groupFields, $sortField, $sortOrder, $size)
+    {
+        $aggs = [];
+        $currentAgg = &$aggs;
+
+        foreach ($groupFields as $field) {
+            $currentAgg[$field] = [
+                'terms' => [
+                    'field' => $field,
+                    'size' => $size,
+                ]
+            ];
+
+            if ($field === end($groupFields)) {
+                if ($sortField !== '_count') {
+                    $currentAgg[$field]['aggs'] = [
+                        $sortField => [
+                            'sum' => ['field' => $sortField]
+                        ]
+                    ];
+                    $currentAgg[$field]['terms']['order'] = [$sortField => $sortOrder];
+                } else {
+                    $currentAgg[$field]['terms']['order'] = ['_count' => $sortOrder];
+                }
+            } else {
+                $currentAgg[$field]['aggs'] = [];
+                $currentAgg = &$currentAgg[$field]['aggs'];
+            }
+        }
+
+        return $aggs;
+    }
+
+    /**
+     * 描述 : 提取桶buckets的信息2，返回二维数组形式
+     * 作者 : Jayden
+     */
+    private static function flattenBuckets($buckets, &$result, $groupFields, $parentValues = [], $sortField = '')
+    {
+        foreach ($buckets as $bucket) {
+            $currentValues = array_merge($parentValues, [$bucket['key']]);
+
+            if (count($currentValues) == count($groupFields)) {
+                $row = array_combine($groupFields, $currentValues);
+                $row['count'] = $bucket['doc_count'];
+                if ($sortField !== '_count') {
+                    $row[$sortField] = $bucket[$sortField]['value'];
+                }
+                $result[] = $row;
+            } else {
+                $nextField = $groupFields[count($currentValues)];
+                self::flattenBuckets($bucket[$nextField]['buckets'], $result, $groupFields, $currentValues, $sortField);
+            }
+        }
+    }
+
+    /**
+     * 描述 : 提取桶buckets的信息，返回多级树形式
+     * 作者 : Jayden
+     */
+    private static function extractBuckets($buckets, &$result, $groupFields, $level)
+    {
+        foreach ($buckets as $bucket) {
+            $current = [
+                $groupFields[$level] => $bucket['key'],
+                'count' => $bucket['doc_count']
+            ];
+
+            if (isset($groupFields[$level + 1])) {
+                $current['subgroups'] = [];
+                self::extractBuckets($bucket[$groupFields[$level + 1]]['buckets'], $current['subgroups'], $groupFields, $level + 1);
+            }
+
+            $result[] = $current;
+        }
+    }
+
+    /**
      * 描述 : 重建索引
-     * 作者 : 
+     *
+     * 修改索引分片数量或修改字段类型步骤：（分片数量在索引创建时是固定的，并且一旦索引创建后就不能直接修改）
+     *
+     *
+     * 1，创建新的索引：使用你想要的新分片数量创建一个新的索引，设置分片数量等配置及字段，必须提前配置映射、分片数、副本等
+     * （关闭新索引自动刷新，缓存数据刷新（写入磁盘）的时间-可选：  "refresh_interval" : "-1"）
+     * 2，使用Reindex API：将数据从旧索引复制到新索引（如果 reindex 时间过长，加上 wait_for_completion=false的参数条件，reindex 将直接返回taskId，异步执行）
+     * 3，删除旧索引：在确认数据已成功复制并且新索引工作正常后，可以删除旧索引。
+     * （开启新索引自动刷新1s-可选：  "refresh_interval" : "1s"）
+     *
+     * （使用别名，代码逻辑平滑替换索引：可以给索引创建别名，然后使用别名来查询，方便后续维护修改）
+     *
+     * {
+     *     "source":{
+     *       "index":"my-index-000001",
+     *       "size":"3000",
+     *       "query":{
+     *          "range": {
+     *                    "esAddTime": {
+     *                        "gt": 1734519600
+     *                   }
+     *                }
+     *            }
+     *        }
+     *     },
+     *     "dest":{
+     *          "index":"my-new-index-000001"
+     *     },
+     *     "max_docs":1000000
+     * }
+     * 作者 : Jayden
      */
     public static function reindex($node, $body, $extraParams = [])
     {
@@ -1314,8 +1473,103 @@ class esTool
     }
 
     /**
+     * 描述 : 查看异步任务列表
+     *
+     * 查看reindex任务：params:{
+     * "actions": [
+     *    "indices:data/write/reindex"
+     * ]
+     * }
+     *
+     * 作者 : Jayden
+     */
+    public static function tasksList($node, $params)
+    {
+        $client = ClientBuilder::create()->setHosts($node)->build();
+        $result = $client->tasks()->list($params);
+        return $result;
+    }
+
+    /**
+     * 描述 : 查看异步任务执行情况
+     * 作者 : Jayden
+     */
+    public static function tasksGet($node, $taskId)
+    {
+        if (empty($taskId)) {
+            return false;
+        }
+        $client = ClientBuilder::create()->setHosts($node)->build();
+        $params = [
+            'task_id' => $taskId,
+        ];
+        $result = $client->tasks()->get($params);
+        return $result;
+    }
+
+    /**
+     * 描述 : 取消异步任务
+     * 作者 : Jayden
+     */
+    public static function tasksCancel($node, $taskId)
+    {
+        if (empty($taskId)) {
+            return false;
+        }
+        $client = ClientBuilder::create()->setHosts($node)->build();
+        $params = [
+            'task_id' => $taskId,
+        ];
+        $result = $client->tasks()->cancel($params);
+        return $result;
+    }
+
+    /**
+     * 描述 : 查看异步任务列表详情
+     * 作者 : Jayden
+     */
+    public static function getAllTaskRunDetail($node, $params)
+    {
+        if (empty($params)) {
+            return ['[params] can not be empty'];
+        }
+        $client = ClientBuilder::create()->setHosts($node)->build();
+        $result = $client->tasks()->list($params);
+        $return = [];
+        if (!empty($result['nodes'])) {
+            foreach ($result['nodes'] as $n => $item) {
+                foreach ($item['tasks'] as $taskId => $taskDetail) {
+                    $params = [
+                        'task_id' => $taskId,
+                    ];
+                    $return[$taskId] = $client->tasks()->get($params);
+                }
+            }
+        }
+        return $return;
+    }
+
+    /**
+     * 描述 : 查看索引别名(为空，查所有索引，所有别名)
+     * 作者 : Jayden
+     */
+    public static function getAlias($node, $index = '', $aliasName = '')
+    {
+        $client = ClientBuilder::create()->setHosts($node)->build();
+        $params = [];
+        if (!empty($index)) {
+            $params['index'] = $index;
+        }
+        if (!empty($aliasName)) {
+            $params['name'] = $aliasName;
+        }
+        $result = $client->indices()->getAlias($params);
+        return $result;
+    }
+
+    /**
      * 描述 : 创建索引别名
-     * 作者 : 
+     * 作者 : Jayden
      */
     public static function putAlias($node, $index, $name)
     {
@@ -1331,7 +1585,7 @@ class esTool
 
     /**
      * 描述 : 删除索引别名
-     * 作者 : 
+     * 作者 : Jayden
      */
     public static function deleteAlias($node, $index, $name)
     {
@@ -1346,10 +1600,139 @@ class esTool
 
     /**
      * 描述 : 获取异常信息
-     * 作者 : 
+     * 作者 : Jayden
      */
     public static function getErrorMessage()
     {
         return self::$errorMessage;
+    }
+
+    /**
+     * 描述 : 设置ES慢日志（需有权限）
+     * 作者 : Jayden
+     *
+     * 可通过配置文件（elasticsearch.yml）设置
+     * 可选的级别有 trace、debug、info、warn
+     * 这些设置可以动态更新，不需要重启 Elasticsearch。
+     * 慢日志通常输出到Elasticsearch的日志目录中。默认位置是：Linux: /var/log/elasticsearch/
+     * 慢日志设置是按索引进行的，可以为不同的索引设置不同的阈值。
+     * 设置过低的阈值可能会产生大量日志，影响性能。
+     */
+    public static function setSlowSetting($node, $index)
+    {
+        $slowSettingConfig = [
+            // 索引慢日志设置
+            'index.indexing.slowlog.threshold.index.warn' => '10s',     //设置不同日志级别的阈值
+            'index.indexing.slowlog.threshold.index.info' => '5s',
+            'index.indexing.slowlog.threshold.index.debug' => '2s',
+            'index.indexing.slowlog.threshold.index.trace' => '500ms',
+            'index.indexing.slowlog.level' => 'info',       //设置日志级别。
+            'index.indexing.slowlog.source' => '1000',      //设置在日志中包含的源文档的最大字符数
+            // 搜索慢日志设置
+            'index.search.slowlog.threshold.query.warn' => '10s',       //设置查询阶段的阈值
+            'index.search.slowlog.threshold.query.info' => '5s',
+            'index.search.slowlog.threshold.query.debug' => '2s',
+            'index.search.slowlog.threshold.query.trace' => '500ms',
+            'index.search.slowlog.threshold.fetch.warn' => '1s',        //设置获取阶段的阈值
+            'index.search.slowlog.threshold.fetch.info' => '800ms',
+            'index.search.slowlog.threshold.fetch.debug' => '500ms',
+            'index.search.slowlog.threshold.fetch.trace' => '200ms',
+            'index.search.slowlog.level' => 'info',
+            // 聚合慢日志设置（Elasticsearch 7.x 及以上版本）
+            'index.search.slowlog.threshold.aggregation.warn' => '10s',
+            'index.search.slowlog.threshold.aggregation.info' => '5s',
+            'index.search.slowlog.threshold.aggregation.debug' => '2s',
+            'index.search.slowlog.threshold.aggregation.trace' => '1s'
+        ];
+        return self::putSettings($node, $index, $slowSettingConfig);
+    }
+
+    /**
+     * 描述 : 查询慢日志，普通搜索方式查询
+     * 作者 : Jayden
+     */
+    public static function getSlowLog($node, $index = '')
+    {
+        $client = ClientBuilder::create()->setHosts($node)->build();
+        // 设置查询参数
+        $params = [
+            'index' => $index . '.slowlog-*',  // 慢日志索引模式
+            'body' => [
+                'query' => [
+                    'bool' => [
+                        'must' => [
+                            [
+                                'range' => [
+                                    '@timestamp' => [
+                                        'gte' => 'now-1d',  // 查询最近一天的日志
+                                        'lte' => 'now'
+                                    ]
+                                ]
+                            ]
+                        ]
+                    ]
+                ],
+                'sort' => [
+                    '@timestamp' => [
+                        'order' => 'desc'
+                    ]
+                ],
+                'size' => 100,
+            ]
+        ];
+        $result = $client->search($params);
+        return $result;
+    }
+
+
+    /**
+     * 描述 : 通过中文ik分词器配置创建普通索引
+     * 作者 : Jayden
+     *
+     * 安装IK分词器插件，下载对应版本的IK分词器，版本需要和Elasticsearch版本匹配。可以从GitHub找到。
+     * 将IK分词器解压到Elasticsearch的plugins目录下，并重启Elasticsearch服务。
+     */
+    public static function createIndexByIK($node, $index, $mappings, $numberOfShards, $numberOfReplicas = 1)
+    {
+        $client = self::getEsClient($node);
+        $exists = $client->indices()->exists(['index' => $index]);
+        if (!empty($exists)) {
+            return false;
+        }
+        //索引不存在，创建索引
+        $params = [
+            'index' => $index,
+            'body' => [
+                'settings' => [
+                    'number_of_shards' => $numberOfShards ?? 8,     //主分片数
+                    'number_of_replicas' => $numberOfReplicas ?? 1,   //每个主分片的副本数
+                    'analysis' => [     //分词器配置
+                        'analyzer' => [
+                            'ik_max_word' => [
+                                'type' => 'custom',
+                                'tokenizer' => 'ik_max_word'
+                            ],
+                            'ik_smart' => [
+                                'type' => 'custom',
+                                'tokenizer' => 'ik_smart'
+                            ],
+                        ],
+                    ],
+                ],
+                'mappings' => [
+                    'properties' => $mappings['properties'] ?? [],      //配置对应字段使用ik分词器
+                ],
+            ]
+        ];
+        //配置对应字段使用ik分词器，如：
+//        $properties = [
+//            'username' => [
+//                'type' => 'keyword',
+//                'analyzer' => 'ik_max_word',
+//                'search_analyzer' => 'ik_smart'
+//            ],
+//        ];
+        $res = $client->indices()->create($params);
+        return $res;
     }
 }
