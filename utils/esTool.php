@@ -21,6 +21,8 @@ class esTool
     public static $clientPool;
     //异常信息
     public static $errorMessage;
+    //处理方式：true:索引模板
+    public static $isTemplate = false;
 
     /*
      * 描述: 获取ES客户端连接
@@ -53,6 +55,15 @@ class esTool
     public static function setUsePool($usePool = true)
     {
         self::$usePool = $usePool;
+    }
+
+    /**
+     * 描述: 设置使用索引模板方式处理
+     * 作者: Jayden
+     */
+    public static function setIsTemplate($isTemplate = true)
+    {
+        self::$isTemplate = $isTemplate;
     }
 
     /**
@@ -181,6 +192,15 @@ class esTool
             //keyword不分词，text分词
             $body['query'] = self::expandQuery($queryBody);
         }
+
+        if (self::$isTemplate) {
+            //索引模板匹配
+            //$indices = $client->indices()->get(['index' => $index . '*']);
+            //$index = array_keys($indices);
+            //直接模版匹配pattern
+            //$index = $index . '*';
+        }
+
         $params = [
             'index' => $index,
             'body' => $body,
@@ -358,6 +378,7 @@ class esTool
      * 描述: 扩展查询
      * //   $queryBody = [
      * //    'spu' => 'MMM0181891',
+     * //    'account.keyword' => 'CUST22250',      //text类型转keyword精确查询
      * //    'siteCode' => 'Germany',
      * //    'productId !=' => '404631367910',
      * //    'state' => [
@@ -404,20 +425,36 @@ class esTool
         $must = $mustNot = $should = [];
         //比较符转换
         $keyMap = ['>' => 'gt', '<' => 'lt', '>=' => 'gte', '<=' => 'lte'];
-        foreach ($queryBody as $name => $item) {
+        foreach ($queryBody as $originalName => $item) {
+            //解析字段类型标识符（如 keyword）
+            $name = $originalName;
+
+            // 处理嵌套查询路径，非.keyword结尾格式
+            if (!$onlyNestQuery && strpos($name, '.') !== false && !str_ends_with($name, '.keyword')) {
+                $pathSegments = explode('.', $name);
+                $path = $pathSegments[0];
+                $nestedField = implode('.', array_slice($pathSegments, 1));
+
+                // 递归处理嵌套字段中的类型标识符
+                $must[] = [
+                    'nested' => [
+                        'path' => $path,
+                        'query' => self::expandQuery([$nestedField => $item], true)
+                    ]
+                ];
+                continue;
+            }
+
+            //针对 text 类型字段做精确查询
+            if (strpos($name, '__') !== false) {
+                list($name, $fieldTypeSuffix) = explode('__', $name, 2);
+                if ($fieldTypeSuffix === 'keyword') {
+                    $name .= '.keyword';
+                }
+            }
+
             if (!is_array($item)) {
-                if (!$onlyNestQuery && strpos($name, '.')) {
-                    //支持二级嵌套查询
-                    $temp = explode('.', $name);
-                    if (isset($temp[0])) {
-                        $must[] = [
-                            'nested' => [
-                                'path' => $temp[0],
-                                'query' => self::expandQuery([$name => $item], true)
-                            ]
-                        ];
-                    }
-                } else if (strpos($name, '!=') > 0 || strpos($name, '<>') > 0) {
+                if (strpos($name, '!=') > 0 || strpos($name, '<>') > 0) {
                     //直接筛选，不等于
                     $name = trim(str_replace(['!=', '<>'], '', $name));
                     $mustNot[] = ['term' => [$name => $item]];
@@ -427,18 +464,7 @@ class esTool
                 }
             } else {
                 $firstKey = key($item);
-                if (!$onlyNestQuery && strpos($name, '.')) {
-                    //支持二级嵌套查询
-                    $temp = explode('.', $name);
-                    if (isset($temp[0])) {
-                        $must[] = [
-                            'nested' => [
-                                'path' => $temp[0],
-                                'query' => self::expandQuery([$name => $item], true)
-                            ]
-                        ];
-                    }
-                } else if (in_array($firstKey, ['eq', '='])) {
+                if (in_array($firstKey, ['eq', '='])) {
                     $must[] = ['term' => [$name => $item[$firstKey]]];
                 } else if ($firstKey == 'in') {
                     $must[] = ['terms' => [$name => $item[$firstKey]]];
@@ -610,7 +636,7 @@ class esTool
                 throw $e;
             } else {
                 //记录日志
-                of::event('of::error', true, [
+                of::error([
                     'memo' => true,
                     'code' => E_USER_ERROR,
                     'info' => $e->getMessage(),
@@ -663,7 +689,7 @@ class esTool
         } catch (\Exception $e) {
             self::$errorMessage = $e->getMessage();
             //记录日志
-            of::event('of::error', true, [
+            of::error([
                 'memo' => true,
                 'code' => E_USER_ERROR,
                 'info' => $e->getMessage(),
@@ -681,7 +707,7 @@ class esTool
      * isLifecycleIndex: 是否为周期索引查询， true 周期索引返回记录对应索引id
      * 作者: Jayden
      */
-    public static function findOne($node, $index, $queryBody, $sourceFields = true, $isLifecycleIndex = false)
+    public static function findOne($node, $index, $queryBody, $sourceFields = true, $isLifecycleIndex = false, $sortArr = [])
     {
         if (empty($queryBody)) {
             return false;
@@ -689,6 +715,12 @@ class esTool
         try {
             $client = self::getEsClient($node);
             $body = [];
+            if (!empty($sortArr)) {
+                $bodySort = self::bodySort($sortArr);
+                if (!empty($bodySort)) {
+                    $body['sort'] = $bodySort;
+                }
+            }
             $body['query'] = self::expandQuery($queryBody);
             $pageSize = 1;
             $page = 1;
@@ -762,7 +794,7 @@ class esTool
             //MEMO日志类型
             self::$errorMessage = $e->getMessage();
             //记录日志
-            of::event('of::error', true, [
+            of::error([
                 'memo' => true,
                 'code' => E_USER_ERROR,
                 'info' => $e->getMessage(),
@@ -806,7 +838,7 @@ class esTool
             //MEMO日志类型
             self::$errorMessage = $e->getMessage();
             //记录日志
-            of::event('of::error', true, [
+            of::error([
                 'memo' => true,
                 'code' => E_USER_ERROR,
                 'info' => $e->getMessage(),
@@ -844,7 +876,7 @@ class esTool
             return $result['updated'] ?? 0;
         } catch (\Exception $e) {
             self::$errorMessage = $e->getMessage();
-            of::event('of::error', true, [
+            of::error([
                 'memo' => true,
                 'code' => E_USER_ERROR,
                 'info' => $e->getMessage(),
@@ -994,6 +1026,28 @@ class esTool
     {
         $client = ClientBuilder::create()->setHosts($node)->build();
         $res = $client->indices()->delete(['index' => $index]);
+        return $res;
+    }
+
+    /**
+     * 描述 : 关闭索引
+     * 作者 : Jayden
+     */
+    public static function closeIndex($node, $index)
+    {
+        $client = ClientBuilder::create()->setHosts($node)->build();
+        $res = $client->indices()->close(['index' => $index]);
+        return $res;
+    }
+
+    /**
+     * 描述 : 重新打开关闭的索引
+     * 作者 : Jayden
+     */
+    public static function openIndex($node, $index)
+    {
+        $client = ClientBuilder::create()->setHosts($node)->build();
+        $res = $client->indices()->open(['index' => $index]);
         return $res;
     }
 
@@ -1275,6 +1329,54 @@ class esTool
     }
 
     /**
+     * 描述 : 按条件统计条数，字段distinctField有值则统计字段去重的条数
+     * 作者 : Jayden
+     */
+    public static function fieldCount($node, $index, $body, $distinctField = '', $returnNum = true)
+    {
+        $client = self::getEsClient($node);
+        $returnNum = false;
+        if (!empty($distinctField)) {
+            if ($returnNum) {
+                $body['aggs'] = [
+                    'distinctResult' => [
+                        'cardinality' => [
+                            'field' => $distinctField,
+                        ]
+                    ]
+                ];
+            } else {
+                $body['aggs'] = [
+                    'accountResult' => [
+                        'terms' => [
+                            'field' => $distinctField, 'size' => 10000
+                        ],
+                    ]
+                ];
+            }
+        }
+        $body['from'] = 0;
+        $body['size'] = 0;
+        $body['track_total_hits'] = true;
+        $params = [
+            'index' => $index,
+            'body' => $body,
+        ];
+        $results = $client->search($params);
+        if (!empty($distinctField)) {
+            if ($returnNum) {
+                $return = $results['aggregations']['distinctResult']['value'];
+            } else {
+                $return = isset($results['aggregations']['accountResult']['buckets']) ?
+                    array_column($results['aggregations']['accountResult']['buckets'], 'doc_count', 'key') : [];
+            }
+        } else {
+            $return = ($results['hits']['total']['value'] ?? 0);
+        }
+        return $return;
+    }
+
+    /**
      * 描述 : 分组
      * 作者 : Jayden
      */
@@ -1343,7 +1445,7 @@ class esTool
      * 描述 : 构建分组信息
      * 作者 : Jayden
      */
-    protected static function buildAggregations($groupFields, $sortField, $sortOrder, $size)
+    private static function buildAggregations($groupFields, $sortField, $sortOrder, $size)
     {
         $aggs = [];
         $currentAgg = &$aggs;
@@ -1734,5 +1836,257 @@ class esTool
 //        ];
         $res = $client->indices()->create($params);
         return $res;
+    }
+
+    /**
+     * 描述: callback方式执行ES-SQL查询返回
+     * 作者: Jayden
+     * @param callable $callback 回调函数
+     * @param string $sql EsSql
+     * @param string $node string Es节点
+     * @param int $esBatchSize 每次查询es数量
+     * @return array
+     */
+    public static function esSearchBySqlCallback(callable $callback, $sql, $node = [], $esBatchSize = 3000)
+    {
+        $client = self::getEsClient($node, true);
+        $columns = [];
+        $batchValues = [];
+        $batchResults = [];
+        while (true) {
+            $params = [
+                'body' => [
+                    'query' => $sql,
+                    'cursor' => $tempCursor ?? '',
+                    'fetch_size' => $esBatchSize,
+                ],
+            ];
+            $queryResult = $client->sql()->query($params);
+            $tempCursor = $queryResult['cursor'] ?? '';
+            if (!empty($queryResult['columns'])) {
+                $columns = $queryResult['columns'];
+            }
+            if (empty($queryResult['rows'])) {
+                break;
+            }
+            foreach ($queryResult['rows'] as $rows) {
+                //这里可对数据进行处理
+                $temp = [];
+                foreach ($rows as $k => $v) {
+                    $temp[$columns[$k]['name']] = $v;
+                }
+                $batchValues[] = $temp;
+            }
+            //if (count($batchValues) >= $batchNum) {
+            //达到导出数量
+            $batchResults[] = call_user_func_array($callback, [$batchValues]);
+            $batchValues = [];
+            //}
+            if (empty($tempCursor)) {
+                break;
+            }
+        }
+        if (!empty($batchValues)) {
+            $batchResults[] = call_user_func_array($callback, [$batchValues]);
+        }
+        return $batchResults;
+    }
+
+    /**
+     * 描述 : 滚动查询
+     * （body与官方客户端kibana查询结构类似，$scrollId第一次查询为空，第一次查询会返回$scrollId，供后续的查询传参）
+     * $callback ：如果有传回调函数，执行回调函数；
+     * 不使用回调函数的，通过函数返回批次的查询数据，带scrollId
+     *
+     * 使用：
+     * self::esSearchScroll($node, $index, $body, function ($results) {
+     *      //数据处理逻辑
+     *      foreach ($results as $item){
+     *
+     *      }
+     * });
+     * 作者 : Jayden
+     */
+    public static function esSearchScrollCallback($node, $index, $body, callable $callback = null, $scrollId = null)
+    {
+        $client = self::getEsClient($node, true);
+        $scrollTime = '5m';
+        $allScrollIds = [];  // 用于跟踪所有使用的scroll_id
+        try {
+            // 使用迭代而非递归
+            while (true) {
+                // 执行查询或滚动
+                if (empty($scrollId)) {
+                    $params = [
+                        'index' => $index,
+                        'body' => $body,
+                        'scroll' => $scrollTime
+                    ];
+                    $results = $client->search($params);
+                } else {
+                    $params = [
+                        'body' => [
+                            'scroll' => $scrollTime,
+                            'scroll_id' => $scrollId,
+                        ],
+                    ];
+                    $results = $client->scroll($params);
+                }
+                // 获取新的scroll_id
+                $scrollId = $results['_scroll_id'] ?? '';
+                if (!empty($scrollId)) {
+                    $allScrollIds[] = $scrollId;
+                }
+                // 准备返回数据
+                $return = [
+                    'scrollId' => $scrollId,
+                    'records' => [],
+                ];
+                // 没有结果或hits为空时退出循环
+                if (!isset($results['hits']) || empty($results['hits']['hits'])) {
+                    break;
+                }
+                $temp = [];
+                foreach ($results['hits']['hits'] as $row) {
+                    $item = array_merge(['_id' => $row['_id']] ?? '', $row['_source']);
+                    $return['records'][] = $item;
+                    $temp[] = $item;
+                }
+                if (empty($temp)) {
+                    break;
+                }
+                if ($callback !== null && is_callable($callback)) {
+                    // 有传回调，执行回调，没有返回数据（带scrollId）
+                    call_user_func_array($callback, [$temp]);
+                } else {
+                    return $return;
+                }
+            }
+            return $return ?? ['scrollId' => '', 'records' => []];
+        } catch (\Exception $e) {
+            // 记录异常信息
+            throw $e;
+        } finally {
+            // 清理所有scroll_id，避免资源泄露
+            if (!empty($allScrollIds)) {
+                try {
+                    $client->clearScroll([
+                        'body' => [
+                            'scroll_id' => $allScrollIds
+                        ],
+                    ]);
+                } catch (\Exception $e) {
+                    // 记录清理失败的错误，但不抛出
+                    //exit('Failed to clear scroll: ' . $e->getMessage());
+                }
+            }
+        }
+    }
+
+    /**
+     * 描述 : 使用search-after进行分页查询并删除数据（清理历史数据）
+     * $query = [
+     * 'bool' => [
+     *      'must' => [
+     *          ['term' => ['status' => '50']]
+     *      ]
+     *   ]
+     * ];
+     * $result = esTool::searchAfterAndDelete($node, $index, $query);
+     * 作者 : Jayden
+     *
+     * @param array $node 节点
+     * @param array $query 查询条件
+     * @param array $sort 排序条件
+     * @return array 处理结果统计
+     */
+    public static function searchAfterAndDelete($node, $index, $query, $sort = ['_id' => 'asc'])
+    {
+        $esClient = self::getEsClient($node, true);
+        $stats = [
+            'total_found' => 0,
+            'deleted' => 0,
+            'failed' => 0
+        ];
+        try {
+            // 初始化搜索参数
+            $params = [
+                'index' => $index,
+                'body' => [
+                    'size' => 1000,
+                    'query' => $query,
+                    'sort' => self::formatSort($sort),
+                    '_source' => ['_id'],
+                ]
+            ];
+            $response = $esClient->search($params);
+            $stats['total_found'] = $response['hits']['total']['value'];
+            while (!empty($response['hits']['hits'])) {
+                $hits = $response['hits']['hits'];
+                $lastHit = end($hits);
+                //批量删除当前页的数据
+                $deleteResult = self::bulkDelete($esClient, $index, $hits);
+                $stats['deleted'] += $deleteResult['success'];
+                $stats['failed'] += $deleteResult['failed'];
+                //$lastHit['sort'] 下一次的查询参数
+                $params['body']['search_after'] = $lastHit['sort'];
+                $response = $esClient->search($params);
+            }
+            return $stats;
+        } catch (\Exception $e) {
+            throw new \Exception('ES异常: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * 描述 :格式化排序条件
+     * 作者 : Jayden
+     *
+     * @param array $sort
+     * @return array
+     */
+    protected static function formatSort($sort)
+    {
+        $formattedSort = [];
+        foreach ($sort as $field => $order) {
+            $formattedSort[] = [$field => ['order' => $order]];
+        }
+        return $formattedSort;
+    }
+
+    /**
+     * 描述 :批量删除文档
+     * 作者 : Jayden
+     *
+     * @param array $hits
+     * @return array
+     */
+    protected static function bulkDelete($esClient, $index, $hits)
+    {
+        $result = ['success' => 0, 'failed' => 0];
+        $bulkParams = ['body' => []];
+        foreach ($hits as $hit) {
+            $bulkParams['body'][] = [
+                'delete' => [
+                    '_index' => $index,
+                    '_id' => $hit['_id']
+                ]
+            ];
+        }
+        try {
+            $response = $esClient->bulk($bulkParams);
+            // 统计删除结果
+            foreach ($response['items'] as $item) {
+                if (isset($item['delete']['result']) && $item['delete']['result'] === 'deleted') {
+                    $result['success']++;
+                } else {
+                    $result['failed']++;
+                }
+            }
+        } catch (\Exception $e) {
+            // 如果批量删除失败，将所有文档标记为失败
+            $result['failed'] = count($hits);
+        }
+        return $result;
     }
 }
