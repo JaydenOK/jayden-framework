@@ -7,8 +7,8 @@ require __DIR__ . '/vendor/autoload.php';
 require __DIR__ . '/core/function/functions.php';
 require __DIR__ . '/core/lib/App.php';
 
-//开发环境还是生产环境
-defined('DEBUG') || define('DEBUG', false);
+defined('DEBUG') || define('DEBUG', true);     //是否DEBUG环境，生产环境改为false
+defined('ENV') || define('ENV', 'local');     //local本地环境，dev开发环境（默认）, test测试环境, pro生产环境；生产环境改为pro
 //定义分隔符、应用目录、应用命名空间
 defined('DS') || define('DS', DIRECTORY_SEPARATOR);
 //APP_ROOT 后缀不带/

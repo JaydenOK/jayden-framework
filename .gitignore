@@ -3,3 +3,5 @@
 .git
 .git/*
 .idea/*
+system/config/db-local.php
+system/data/*

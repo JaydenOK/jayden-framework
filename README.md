@@ -1,5 +1,5 @@
 
-## Jayden-Framework 框架  
+## Jayden-Framework 支持多模块小型PHP框架  
 PHP工具类库，Swoole常驻进程/异步任务/多消费队列进程/协程实例，rabbitmq使用，Auth2.0，RSA加密解密，JWT，validation参数过滤校验、DI模式等。  
 同时是一个支持多模块小型PHP框架，如api、apiv2为模块目录  
 （注意：一般目录下带有bootstrap.php文件的为独立于框架的用例模块） 
@@ -35,6 +35,11 @@ docs  一些文档说明
 ```shell script
 composer require jaydenok/jayden-framework
 ```
+
+####  配置nginx
+```shell script
+nginx站点配置如: jayden.cc.conf
+```
   
 #### 操作 
 ```
@@ -42,29 +47,22 @@ action方法内部获取请求数据，使用$this->body或注入run($body)获�
 访问路由： 
 
 HTTP:
-http://jayden.cc/api/test/index?param1=1&param2=2
+http://jayden.cc/api/test/testOne?param1=1&param2=2
   
 命令行：
 php index.php "command/Smc/test" "param1=1&param2=2"
 ```
 
   
-#### 其它目录为单个模块库    
+#### 其它目录为单个模块库 （不需要可去除）
 ```
-php工具类库，mysql高阶查询等  
-支持命名空间、多模块，控制器，方法小型PHP项目_  
-utils php常用工具集合 (一般一个工具存放在一个文件夹)
-
--- autoloader 自动加载命名空间  
--- 数组与树型结构转换  
--- pdo操作mysql数据库，支持ORM  
-```  
-
-```$xslt
-如 php-event 模块库：
 模块跟目录下一个固定PSR-4 自动加载类，使用时引入此文件，功能：将当前根目录注册为自动加载的命名空间 module
 require '../bootstrap.php';
-```
+
+如PHP实现雪花算法模块, 
+测试生成分布式ID生成，访问: http://jayden.cc/php-snowflake/test.php
+```  
+
 
 #### 存在的独立功能模块
 ```text
@@ -76,6 +74,12 @@ php事件机制 | php-event
 util工具类 XML，alias转盘抽奖算法， | util 
 php-di容器 | vendor 
 rakit 参数验证器 | rakit 
+php工具类库，mysql实用查询等  
+支持命名空间、多模块，控制器，方法小型PHP项目_  
+utils php常用工具集合 (一般一个工具存放在一个文件夹)
+-- autoloader 自动加载命名空间  
+-- 数组与树型结构转换  
+-- pdo操作mysql数据库，支持ORM  
 ```
 
 #### docs_md 文档
