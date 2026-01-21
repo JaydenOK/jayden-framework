@@ -7,20 +7,52 @@ use app\system\MqManager;
 
 /**
  * 消息队列控制器
+ * 
+ * 提供消息队列的Web管理界面和CLI命令支持
+ * 支持MySQL和Redis双存储引擎，根据虚拟主机配置自动切换
  *
- * 接口列表：
- * - /system/mq/index     管理页面（HTML可视化）
- * - /system/mq/start     启动主进程
- * - /system/mq/stop      停止主进程
- * - /system/mq/restart   重启主进程
- * - /system/mq/status    查看状态（JSON）
- * - /system/mq/test      发送测试消息
+ * Web接口列表：
+ * - /system/mq/index      管理页面（HTML可视化，查看队列状态、启停服务）
+ * - /system/mq/list       消息列表页面（查看、筛选、执行、删除消息）
+ * - /system/mq/start      启动主进程
+ * - /system/mq/stop       停止主进程
+ * - /system/mq/restart    重启主进程
+ * - /system/mq/status     查看状态（JSON）
+ * - /system/mq/statusData 获取状态数据（AJAX接口）
+ * - /system/mq/test       发送测试消息
+ * - /system/mq/messages   获取消息列表（JSON）
+ * - /system/mq/detail     获取消息详情（JSON）
+ * - /system/mq/execute    执行指定消息
+ * - /system/mq/reset      重置消息（清零重试次数）
+ * - /system/mq/delete     删除消息
  *
  * CLI命令：
- * - php index.php system/mq/start    启动（前台运行）
- * - php index.php system/mq/daemon   启动（后台守护）
- * - php index.php system/mq/stop     停止
- * - php index.php system/mq/status   查看状态
+ * - php index.php system/mq/start    启动（前台运行，可查看日志输出）
+ * - php index.php system/mq/daemon   启动（后台守护进程模式）
+ * - php index.php system/mq/stop     停止主进程及所有消费者
+ * - php index.php system/mq/restart  重启（先停止后启动）
+ * - php index.php system/mq/status   查看运行状态
+ *
+ * 配置文件：
+ * - system/config/db.php     数据库/Redis连接配置（支持多环境：db-local.php, db-dev.php等）
+ * - system/config/mq.php     队列配置（队列名称、消费者数量、回调方法）
+ *
+ * 队列配置示例（system/config/mq.php）：
+ * ```php
+ * return [
+ *     'default' => [                                    // 虚拟主机名（对应db.php中的配置）
+ *         'testMq1' => [                                // 队列名称
+ *             'cNum' => 2,                              // 消费者进程数量
+ *             'call' => 'app\system\TestController::testMq1'  // 回调方法
+ *         ],
+ *     ],
+ * ];
+ * ```
+ *
+ * 回调方法返回值说明：
+ * - return true;    处理成功，消息被删除
+ * - return false;   处理失败，按指数退避重试（2^n 分钟）
+ * - return 3600;    处理失败，指定3600秒后重试
  */
 class MqController extends Controller
 {
@@ -771,7 +803,13 @@ HTML;
     }
 
     /**
-     * 守护进程入口
+     * 守护进程入口（后台运行）
+     * 
+     * CLI命令：php index.php system/mq/daemon
+     * 
+     * 与 start 的区别：
+     * - daemon: 后台运行，适合生产环境
+     * - start: 前台运行，可查看日志输出，适合调试
      */
     public function daemon()
     {
@@ -787,6 +825,22 @@ HTML;
 
     /**
      * 消费者进程入口
+     * 
+     * 由主进程自动启动，不应手动调用
+     * CLI命令：php index.php system/mq/consumer --vhost=xxx --name=xxx --id=xxx
+     * 
+     * 消费流程：
+     * 1. 循环调用 MqManager::pop() 获取消息（已自动锁定）
+     * 2. 执行配置的回调方法处理消息
+     * 3. 根据返回值决定后续操作：
+     *    - true:  调用 ack() 删除消息
+     *    - false: 调用 nack() 解锁并设置指数退避重试
+     *    - 正整数: 调用 nack() 解锁并设置指定秒数后重试
+     * 4. 队列为空时休眠 pollInterval 微秒后继续轮询
+     * 
+     * 停止机制：
+     * - 优雅停止：主进程设置 stopping=true，消费者处理完当前消息后退出
+     * - 强制停止：主进程设置 force=true，消费者立即退出（即使正在处理消息）
      */
     public function consumer()
     {
@@ -800,11 +854,12 @@ HTML;
             return;
         }
 
-        // 设置当前虚拟主机
+        // 设置当前虚拟主机（影响 MqManager 的数据库/Redis连接）
         MqManager::setVHost($vHost);
 
         $lockFile = $this->getConsumerLockFile($mqName, $consumerId, $vHost);
 
+        // 创建锁文件（记录消费者状态，用于主进程监控和停止控制）
         $this->createLockFile($lockFile, [
             'role' => 'consumer', 'vHost' => $vHost, 'mqName' => $mqName,
             'consumerId' => $consumerId, 'stopping' => false, 'busy' => false
@@ -812,29 +867,37 @@ HTML;
 
         echo "[INFO] 消费者启动: {$vHost}/{$mqName}#{$consumerId}\n";
 
+        // 消费循环
         while (true) {
+            // 检查停止信号（优雅停止：等待当前消息处理完；强制停止：立即退出）
             $lock = $this->readLockFile($lockFile);
             if ($lock && !empty($lock['stopping']) && (empty($lock['busy']) || !empty($lock['force']))) {
                 break;
             }
 
-            // 使用MySQL存储，延迟重试由数据库的lockTime字段控制
-            // pop方法会锁定消息但不删除，需要通过 ack/nack 来确认或重试
+            // pop() 会原子性地锁定一条消息并返回
+            // MySQL: 通过 UPDATE + lockMark 实现锁定
+            // Redis: 从 queue List 弹出并记录到 lock Hash
             $message = MqManager::pop($mqName);
+            
             if ($message !== null) {
+                // 标记为忙碌状态（防止优雅停止时被中断）
                 $this->updateLockFile($lockFile, ['busy' => true]);
                 $msgId = $message['id'] ?? $message['_unqid'] ?? 'unknown';
                 
                 try {
+                    // 执行回调并获取返回值
                     $result = $this->executeCallbackWithReturn($config, $message);
 
-                    // 处理返回值：true=成功，false=失败，正整数=延迟N秒后重试
+                    // 根据返回值处理消息
                     if ($result === true) {
-                        // 执行成功，确认删除消息
+                        // 成功：确认消费，删除消息
                         MqManager::ack($mqName, $message);
                         echo "[INFO] 消息处理成功: {$msgId}\n";
                     } else {
-                        // 消费失败，解锁并设置重试
+                        // 失败：解锁消息，设置重试延迟
+                        // - 返回正整数：使用自定义延迟秒数
+                        // - 返回其他：使用指数退避（2^n 分钟）
                         $delaySeconds = (is_numeric($result) && $result > 0) ? (int)$result : 0;
                         MqManager::nack($mqName, $message, $delaySeconds);
                         
@@ -847,18 +910,20 @@ HTML;
                         }
                     }
                 } catch (\Throwable $e) {
-                    // 执行异常，解锁消息进入重试
+                    // 异常：解锁消息，使用默认指数退避重试
                     MqManager::nack($mqName, $message, 0);
                     echo "[ERROR] 消息处理异常: {$msgId}, " . $e->getMessage() . "\n";
                 }
                 
+                // 标记为空闲状态
                 $this->updateLockFile($lockFile, ['busy' => false]);
             } else {
+                // 队列为空，休眠后继续轮询（默认 100ms）
                 usleep($this->pollInterval);
             }
         }
 
-        // 关闭当前虚拟主机的数据库连接
+        // 清理：关闭数据库连接，删除锁文件
         MqManager::close($vHost);
         $this->deleteLockFile($lockFile);
         echo "[INFO] 消费者退出: {$vHost}/{$mqName}#{$consumerId}\n";
@@ -866,11 +931,27 @@ HTML;
 
     // ==================== 核心逻辑 ====================
 
+    /**
+     * 主进程运行逻辑
+     * 
+     * 主进程职责：
+     * 1. 启动所有队列的消费者进程（根据 mq.php 配置的 cNum）
+     * 2. 监听配置变化，动态调整消费者数量（热加载）
+     * 3. 监控消费者健康状态，自动重启异常消费者
+     * 4. 响应停止信号，优雅关闭所有消费者
+     * 
+     * 主循环（每 checkInterval 秒执行一次）：
+     * - 检查停止信号（lock文件中的 stopping 标志）
+     * - 检查配置变化（mq.php 文件修改时间）
+     * - 检查消费者健康状态（通过 lock 文件和进程检测）
+     */
     protected function runMaster()
     {
         echo "[INFO] 主进程启动 PID:" . getmypid() . "\n";
+        // 创建主进程锁文件（记录PID，用于停止和状态查询）
         $this->createLockFile($this->getMasterLockFile(), ['role' => 'master']);
 
+        // Linux下注册信号处理（Ctrl+C 和 kill）
         if (!$this->isWindows && function_exists('pcntl_signal')) {
             pcntl_signal(SIGTERM, function () {
                 $this->running = false;
@@ -880,19 +961,24 @@ HTML;
             });
         }
 
-        $consumers = [];
+        // 启动所有消费者进程
+        $consumers = [];  // 结构: [vHost => [mqName => [consumerId => startTime]]]
         $this->startAllConsumers($consumers);
 
+        // 主循环
         while ($this->running) {
+            // 处理信号（Linux）
             if (!$this->isWindows && function_exists('pcntl_signal_dispatch')) {
                 pcntl_signal_dispatch();
             }
 
+            // 检查停止信号（Web界面或CLI发送）
             $lock = $this->readLockFile($this->getMasterLockFile());
             if ($lock && !empty($lock['stopping'])) {
                 break;
             }
 
+            // 配置热加载：检测 mq.php 变化，动态调整消费者
             if ($this->isConfigChanged()) {
                 $oldConfig = $this->mqConfig;
                 $this->mqConfig = include $this->configFile;
@@ -900,15 +986,25 @@ HTML;
                 $this->handleConfigChange($oldConfig, $this->mqConfig, $consumers);
             }
 
+            // 健康检查：重启异常退出的消费者
             $this->checkConsumersHealth($consumers);
+            
+            // 休眠（默认5秒）
             sleep($this->checkInterval);
         }
 
+        // 优雅停止所有消费者
         $this->stopAllConsumers($consumers);
         $this->deleteLockFile($this->getMasterLockFile());
         echo "[INFO] 主进程退出\n";
     }
 
+    /**
+     * 启动所有消费者进程
+     * 
+     * 遍历配置文件中的所有虚拟主机和队列，
+     * 为每个队列启动 cNum 个消费者进程
+     */
     protected function startAllConsumers(&$consumers)
     {
         foreach ($this->mqConfig as $vHost => $queues) {
@@ -928,6 +1024,13 @@ HTML;
         }
     }
 
+    /**
+     * 启动单个消费者进程
+     * 
+     * 通过后台方式启动 consumer 方法，传递 vhost/name/id 参数
+     * Windows: 使用 COM 对象或 VBS 脚本
+     * Linux: 使用 nohup + & 后台运行
+     */
     protected function startConsumer($vHost, $mqName, $consumerId)
     {
         $phpBin = $this->getPhpCliBinary();
@@ -942,6 +1045,11 @@ HTML;
         echo "[INFO] 启动消费者: {$vHost}/{$mqName}#{$consumerId}\n";
     }
 
+    /**
+     * 异步启动主进程（用于Web界面启动）
+     * 
+     * 在后台启动 daemon 方法，立即返回
+     */
     protected function startMasterAsync()
     {
         $phpBin = $this->getPhpCliBinary();
@@ -973,9 +1081,20 @@ HTML;
         }
     }
 
+    /**
+     * 处理配置变更（热加载核心逻辑）
+     * 
+     * 配置变更场景：
+     * 1. 新增队列：启动对应数量的消费者
+     * 2. 删除队列：停止该队列的所有消费者
+     * 3. 增加 cNum：启动新增的消费者
+     * 4. 减少 cNum：停止多余的消费者（优雅停止）
+     * 
+     * 注意：修改回调方法（call）需要重启消费者才能生效
+     */
     protected function handleConfigChange($old, $new, &$consumers)
     {
-        // 遍历所有虚拟主机
+        // 遍历所有虚拟主机（新旧配置的并集）
         $allVHosts = array_unique(array_merge(array_keys($old), array_keys($new)));
 
         foreach ($allVHosts as $vHost) {
@@ -992,24 +1111,24 @@ HTML;
                 $newN = (int)($newQueues[$mqName]['cNum'] ?? 0);
 
                 if (!isset($newQueues[$mqName])) {
-                    // 队列被删除
+                    // 场景1：队列被删除 -> 停止所有消费者
                     for ($i = 1; $i <= $oldN; $i++) $this->stopConsumer($vHost, $mqName, $i);
                     unset($consumers[$vHost][$mqName]);
                 } elseif (!isset($oldQueues[$mqName])) {
-                    // 新增队列
+                    // 场景2：新增队列 -> 启动消费者
                     $consumers[$vHost][$mqName] = [];
                     for ($i = 1; $i <= $newN; $i++) {
                         $this->startConsumer($vHost, $mqName, $i);
                         $consumers[$vHost][$mqName][$i] = time();
                     }
                 } elseif ($newN > $oldN) {
-                    // 增加消费者
+                    // 场景3：增加消费者数量
                     for ($i = $oldN + 1; $i <= $newN; $i++) {
                         $this->startConsumer($vHost, $mqName, $i);
                         $consumers[$vHost][$mqName][$i] = time();
                     }
                 } elseif ($newN < $oldN) {
-                    // 减少消费者
+                    // 场景4：减少消费者数量（优雅停止多余的）
                     for ($i = $oldN; $i > $newN; $i--) {
                         $this->stopConsumer($vHost, $mqName, $i);
                         unset($consumers[$vHost][$mqName][$i]);
@@ -1024,6 +1143,12 @@ HTML;
         }
     }
 
+    /**
+     * 健康检查：检测并重启异常消费者
+     * 
+     * 通过检查 lock 文件和进程状态判断消费者是否存活
+     * 异常情况（进程不存在但应该存在）会自动重启
+     */
     protected function checkConsumersHealth(&$consumers)
     {
         foreach ($this->mqConfig as $vHost => $queues) {
@@ -1034,6 +1159,7 @@ HTML;
                 if (!isset($consumers[$vHost][$mqName])) $consumers[$vHost][$mqName] = [];
 
                 for ($i = 1; $i <= $cNum; $i++) {
+                    // 检查消费者进程是否存活
                     if (!$this->isConsumerRunning($mqName, $i, $vHost)) {
                         echo "[WARN] 消费者 {$vHost}/{$mqName}#{$i} 异常，重启中...\n";
                         $this->startConsumer($vHost, $mqName, $i);
@@ -1044,24 +1170,37 @@ HTML;
         }
     }
 
+    /**
+     * 停止单个消费者
+     * 
+     * @param bool $force true=强制停止（立即kill），false=优雅停止（等待当前消息处理完）
+     */
     protected function stopConsumer($vHost, $mqName, $consumerId, $force = false)
     {
         $lockFile = $this->getConsumerLockFile($mqName, $consumerId, $vHost);
         $lock = $this->readLockFile($lockFile);
         if (!$lock) return;
 
+        // 设置停止标志，消费者循环会检查此标志
         $lock['stopping'] = true;
         $lock['force'] = $force;
         file_put_contents($lockFile, json_encode($lock));
 
+        // 强制停止：直接 kill 进程
         if ($force && !empty($lock['pid'])) {
             $this->killProcess($lock['pid']);
             $this->deleteLockFile($lockFile);
         }
     }
 
+    /**
+     * 停止所有消费者
+     * 
+     * 优雅停止时会等待最多30秒，让消费者处理完当前消息
+     */
     protected function stopAllConsumers(&$consumers, $force = false)
     {
+        // 向所有消费者发送停止信号
         foreach ($consumers as $vHost => $queues) {
             foreach ($queues as $mqName => $list) {
                 foreach ($list as $id => $time) {
@@ -1070,6 +1209,7 @@ HTML;
             }
         }
 
+        // 优雅停止：等待消费者自行退出（最多30秒）
         if (!$force) {
             for ($i = 0; $i < 30; $i++) {
                 $allStopped = true;
@@ -1090,7 +1230,8 @@ HTML;
     }
 
     /**
-     * 执行回调
+     * 执行回调（仅返回布尔值，用于内部逻辑）
+     * 
      * @return bool true=消费成功, false=消费失败(消息放回队列)
      */
     protected function executeCallback($config, $message)
@@ -1126,7 +1267,7 @@ HTML;
 
             return $result === true;
         } catch (\Throwable $e) {
-            // 异常时记录错误，返回false不消费
+            // 异常时记录错误，返回false进入重试
             echo "[ERROR] 回调异常: " . $e->getMessage() . "\n";
             echo "[ERROR] 堆栈: " . $e->getTraceAsString() . "\n";
             return false;

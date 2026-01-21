@@ -6,6 +6,24 @@ namespace app\system;
  * Redis连接管理器
  *
  * 支持多虚拟主机Redis连接池管理，支持多环境配置
+ * 主要用于消息队列的Redis存储后端，也可独立使用
+ *
+ * 配置文件：system/config/db.php（或对应环境的 db-local.php, db-dev.php 等）
+ * 
+ * 配置示例：
+ * ```php
+ * return [
+ *     'redis_vhost' => [
+ *         'adapter'  => 'redis',    // 指定使用Redis（必填）
+ *         'host'     => '127.0.0.1',
+ *         'port'     => 6379,
+ *         'auth'     => '',         // Redis密码，无密码留空
+ *         'db'       => 0,          // Redis数据库编号（0-15）
+ *         'timeout'  => 2.0,        // 连接超时（秒）
+ *         'prefix'   => '',         // 键名前缀（可选）
+ *     ],
+ * ];
+ * ```
  *
  * 使用示例：
  * ```php
@@ -13,14 +31,39 @@ namespace app\system;
  * $redis = RedisManager::getConnection();
  *
  * // 获取指定虚拟主机Redis连接
- * $redis = RedisManager::getConnection('oms');
+ * $redis = RedisManager::getConnection('redis_vhost');
+ *
+ * // 检查连接是否有效
+ * if (RedisManager::ping('redis_vhost')) {
+ *     echo '连接正常';
+ * }
+ *
+ * // 重新连接
+ * $redis = RedisManager::reconnect('redis_vhost');
  *
  * // 关闭指定连接
- * RedisManager::close('oms');
+ * RedisManager::close('redis_vhost');
  *
  * // 关闭所有连接
  * RedisManager::closeAll();
+ *
+ * // 获取所有Redis类型的虚拟主机列表
+ * $list = RedisManager::getRedisVHostList();
+ *
+ * // 检查虚拟主机是否为Redis类型
+ * if (RedisManager::isRedisVHost('redis_vhost')) {
+ *     // ...
+ * }
  * ```
+ *
+ * 消息队列相关键名（由MqManager使用）：
+ * - mq:{vHost}:{mqName}:queue      待处理消息队列（List）
+ * - mq:{vHost}:{mqName}:messages   消息详情（Hash）
+ * - mq:{vHost}:{mqName}:delay      延迟消息队列（Sorted Set）
+ * - mq:{vHost}:{mqName}:lock       锁定的消息（Hash）
+ * - mq:{vHost}:all_messages        所有消息索引（Sorted Set）
+ * - mq:{vHost}:names               队列名称索引（Set）
+ * - mq:{vHost}:groups              队列组索引（Set）
  */
 class RedisManager
 {

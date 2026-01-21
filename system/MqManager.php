@@ -8,8 +8,15 @@ use app\system\RedisManager;
 /**
  * 消息队列管理器（静态类）- 支持MySQL和Redis双存储
  *
+ * 功能特性：
+ * - 双存储引擎：支持 MySQL 和 Redis，根据虚拟主机配置自动切换
+ * - 自定义消息ID：支持指定 msgId，相同 msgId 覆盖写入（去重）
+ * - 延迟消费：支持指定延迟秒数，消息在指定时间后才能被消费
+ * - 消息锁机制：确保同一消息同一时间只被一个消费者处理
+ * - 失败重试：指数退避重试，消息永不丢失
+ *
  * 队列存储方式：根据虚拟主机配置的adapter字段自动选择存储后端
- * - adapter = 'mysql' 使用MySQL数据库存储
+ * - adapter = 'mysql' 使用MySQL数据库存储（默认）
  * - adapter = 'redis' 使用Redis存储
  *
  * MySQL表结构：
@@ -24,7 +31,7 @@ use app\system\RedisManager;
  *   `updateTime` timestamp NOT NULL DEFAULT '2000-01-01 00:00:00' COMMENT '消息最后更新时间',
  *   `createTime` timestamp NOT NULL DEFAULT '2000-01-01 00:00:00' COMMENT '消息首次创建时间',
  *   `syncLevel` int(11) NOT NULL COMMENT '同步等级, 数值越大优先级越低',
- *   `lockTime` timestamp NOT NULL DEFAULT '2000-01-01 00:00:00' COMMENT '锁定时间, 每 syncLevel * 5 分钟重试',
+ *   `lockTime` timestamp NOT NULL DEFAULT '2000-01-01 00:00:00' COMMENT '锁定时间/延迟执行时间',
  *   `lockMark` char(32) NOT NULL COMMENT '锁定时生成的唯一ID',
  *   PRIMARY KEY (`name`,`unqid`) USING BTREE,
  *   KEY `idx_msgId` (`msgId`) USING BTREE,
@@ -42,9 +49,43 @@ use app\system\RedisManager;
  *
  * 使用示例：
  * ```php
- * // 发送消息到队列
+ * // ========== 基本发送 ==========
+ * // 发送消息到队列（立即可消费）
  * MqManager::set('testMq1', ['key' => 'value']);
+ * 
+ * // 发送到指定虚拟主机
+ * MqManager::set('testMq1', $data, 'redis_vhost');
  *
+ * // ========== 指定消息ID（去重/覆盖） ==========
+ * // 使用数组格式：[$mqName, $msgId]
+ * // 如果 msgId 已存在，则覆盖原消息
+ * MqManager::set(['orderQueue', 'order_123'], $orderData);
+ *
+ * // ========== 延迟消费 ==========
+ * // 使用数组格式：[$mqName, $msgId, $delaySecond]
+ * // msgId 可以为 null（系统自动生成）
+ * 
+ * // 延迟 60 秒后消费，系统自动生成 msgId
+ * MqManager::set(['queueName', null, 60], $data);
+ * 
+ * // 延迟 5 分钟后消费，指定 msgId
+ * MqManager::set(['orderQueue', 'order_123', 300], $orderData);
+ *
+ * // ========== 组合使用：订单超时取消 ==========
+ * // 下单时发送延迟消息，30分钟后检查支付状态
+ * $orderId = 'ORD202401010001';
+ * MqManager::set(
+ *     ['orderTimeoutQueue', "timeout_{$orderId}", 1800],
+ *     ['orderId' => $orderId, 'action' => 'check_payment']
+ * );
+ * 
+ * // 用户支付后，覆盖为立即执行的确认消息
+ * MqManager::set(
+ *     ['orderTimeoutQueue', "timeout_{$orderId}"],
+ *     ['orderId' => $orderId, 'action' => 'payment_confirmed']
+ * );
+ *
+ * // ========== 其他操作 ==========
  * // 批量发送
  * MqManager::setBatch('testMq1', [['a' => 1], ['a' => 2]]);
  *
@@ -584,27 +625,44 @@ class MqManager
 
     // ==================== MySQL 存储实现 ====================
 
+    /**
+     * MySQL存储：发送消息到队列
+     * 
+     * 核心逻辑：
+     * 1. unqid 由 vHost+group+mqName+msgId 的MD5生成，确保同一msgId在同一队列中唯一
+     * 2. 使用 REPLACE INTO 实现覆盖写入，相同msgId的消息会被新消息替换
+     * 3. 延迟消费通过 lockTime 实现：
+     *    - 非延迟消息：lockTime='2000-01-01'（早于当前时间，可立即被消费）
+     *    - 延迟消息：lockTime=当前时间+延迟秒数（到期后才能被消费）
+     * 4. 消费者通过 popMySQL 获取消息时会检查 lockTime <= now
+     */
     protected static function setMySQL($mqName, $data, $vhost = null, $group = null, $customMsgId = null, $delaySecond = 0)
     {
         try {
             $msgVHost = $vhost ?? self::$vHost;
             $msgGroup = $group ?? self::$group;
             $pdo = self::getMySQLConnection($msgVHost);
+            // 使用自定义msgId或系统生成（格式：YmdHis_微秒_随机数）
             $msgId = $customMsgId ?? self::generateMsgId();
+            // unqid = MD5(vHost + group + mqName + msgId)，用于唯一标识消息
             $unqid = self::generateUnqidWithVHost($mqName, $msgId, $msgVHost, $msgGroup);
             $now = time();
             $nowStr = date('Y-m-d H:i:s', $now);
             
-            // 计算锁定时间（延迟执行时间）
+            // 延迟消费核心：lockTime 决定消息何时可被消费
+            // - 延迟消息：lockTime = 当前时间 + 延迟秒数
+            // - 立即消息：lockTime = '2000-01-01'（历史时间，可立即被pop获取）
             $lockTime = $delaySecond > 0 ? date('Y-m-d H:i:s', $now + $delaySecond) : '2000-01-01 00:00:00';
             
+            // 消息体结构：id(消息ID), data(业务数据), time(发送时间戳)
             $message = [
                 'id' => $msgId,
                 'data' => $data,
                 'time' => $now
             ];
             
-            // 使用 REPLACE INTO 实现覆盖写入（msgId重复时覆盖）
+            // REPLACE INTO：如果unqid已存在则先删除再插入（实现覆盖写入）
+            // 适用场景：相同msgId的消息需要被新消息替换（如订单状态更新）
             $sql = "REPLACE INTO `mq` (`unqid`, `vHost`, `group`, `name`, `msgId`, `data`, `syncCount`, `updateTime`, `createTime`, `syncLevel`, `lockTime`, `lockMark`) 
                     VALUES (:unqid, :vHost, :group, :name, :msgId, :data, 0, :updateTime, :createTime, 0, :lockTime, '')";
             
@@ -628,6 +686,16 @@ class MqManager
         }
     }
 
+    /**
+     * MySQL存储：将消息重新放回队列（用于重试）
+     * 
+     * 核心逻辑：
+     * 1. 用于消费失败后的重试，会更新 syncCount/syncLevel
+     * 2. 延迟时间计算：
+     *    - 指定 delaySeconds > 0：使用自定义延迟
+     *    - 未指定：默认按 syncLevel * 5 分钟延迟
+     * 3. 清空 lockMark 解除锁定，等待下次消费
+     */
     protected static function pushMySQL($mqName, $message, $delaySeconds = 0)
     {
         try {
@@ -636,20 +704,20 @@ class MqManager
             $unqid = self::generateUnqid($mqName, $msgId);
             $now = date('Y-m-d H:i:s');
             
-            // 获取重试次数：优先使用 _syncCount（来自数据库），否则用 syncCount
+            // 获取重试次数：_syncCount 是 pop 时附加的内部字段
             $syncCount = $message['_syncCount'] ?? $message['syncCount'] ?? 0;
             $syncLevel = $syncCount;
             
-            // 存储前移除内部字段
+            // 存储前移除内部字段（以 _ 开头的是运行时附加字段）
             $storeMessage = $message;
             unset($storeMessage['_syncCount'], $storeMessage['_syncLevel']);
             
-            // 计算锁定时间
+            // 计算下次可执行时间（lockTime）
             if ($delaySeconds > 0) {
-                // 使用自定义延迟秒数
+                // 自定义延迟秒数（回调返回正整数时使用）
                 $lockTime = date('Y-m-d H:i:s', time() + $delaySeconds);
             } else {
-                // 根据同步等级设置延迟（每级延迟5分钟）
+                // 默认延迟：syncLevel * 5 分钟（线性增长）
                 $delayMinutes = $syncLevel * 5;
                 $lockTime = date('Y-m-d H:i:s', time() + $delayMinutes * 60);
             }
@@ -764,16 +832,31 @@ class MqManager
         }
     }
 
+    /**
+     * MySQL存储：弹出一条消息进行消费
+     * 
+     * 核心逻辑（消息锁机制）：
+     * 1. 使用 UPDATE + LIMIT 1 原子操作锁定消息，防止多消费者竞争
+     * 2. 锁定条件：
+     *    - lockMark = ''（未锁定）或 lockTime < 超时时间（锁定已超时，防止进程崩溃导致消息丢失）
+     *    - lockTime <= now（消息已到可执行时间，支持延迟消费）
+     * 3. 优先级：syncLevel ASC（重试次数少的优先）, createTime ASC（先进先出）
+     * 4. 返回消息时附加内部字段：_unqid, _lockMark, _syncCount, _syncLevel
+     *    - 这些字段用于后续 ack/nack 操作验证
+     * 5. 消费成功调用 ack() 删除消息，失败调用 nack() 解锁并设置重试
+     */
     protected static function popMySQL($mqName)
     {
         try {
             $pdo = self::getMySQLConnection();
             $now = date('Y-m-d H:i:s');
+            // 生成唯一锁标识，用于验证消息归属
             $lockMark = self::generateLockMark();
             
-            // 尝试锁定一条消息
-            // 条件：未锁定（lockMark为空）或锁定已超时
-            // 并且 lockTime 已过（用于延迟重试的消息）
+            // 原子操作：尝试锁定一条可消费的消息
+            // 关键条件解释：
+            // - lockMark = '' 或 lockTime < expireTime：消息未被锁定或锁已超时
+            // - lockTime <= now：消息的延迟时间已到（支持延迟消费和重试延迟）
             $sql = "UPDATE `mq` SET 
                     `lockMark` = :lockMark, 
                     `lockTime` = :lockTime 
@@ -785,6 +868,7 @@ class MqManager
                     LIMIT 1";
             
             $stmt = $pdo->prepare($sql);
+            // 锁超时时间 = 当前时间 - lockTimeout（默认5分钟）
             $expireTime = date('Y-m-d H:i:s', time() - self::$lockTimeout);
             $stmt->execute([
                 ':lockMark'   => $lockMark,
@@ -796,10 +880,10 @@ class MqManager
             ]);
             
             if ($stmt->rowCount() === 0) {
-                return null; // 没有可用消息
+                return null; // 没有可用消息（队列空或全部被锁定/延迟中）
             }
             
-            // 获取被锁定的消息
+            // 通过 lockMark 查找刚被锁定的消息
             $sql = "SELECT `unqid`, `name`, `data`, `syncCount`, `syncLevel` FROM `mq` 
                     WHERE `name` = :name 
                     AND `vHost` = :vHost 
@@ -833,14 +917,23 @@ class MqManager
         }
     }
 
+    /**
+     * MySQL存储：确认消费成功，删除消息
+     * 
+     * 核心逻辑：
+     * 1. 必须验证 lockMark 匹配，确保只有锁定该消息的消费者才能删除
+     * 2. 防止误删其他消费者正在处理的消息
+     */
     protected static function ackMySQL($mqName, $message)
     {
+        // _unqid 和 _lockMark 是 pop 时附加的内部字段
         if (empty($message['_unqid']) || empty($message['_lockMark'])) {
             return false;
         }
         
         try {
             $pdo = self::getMySQLConnection();
+            // 删除时必须匹配 lockMark，确保消息归属正确
             $sql = "DELETE FROM `mq` 
                     WHERE `name` = :name 
                     AND `unqid` = :unqid 
@@ -860,6 +953,17 @@ class MqManager
         }
     }
 
+    /**
+     * MySQL存储：消费失败，解锁消息并设置重试
+     * 
+     * 核心逻辑：
+     * 1. 重试次数 syncCount + 1，影响重试优先级
+     * 2. 延迟策略（指数退避）：
+     *    - 指定 delaySeconds：使用自定义延迟
+     *    - 未指定：2^n 分钟（第1次2分钟，第2次4分钟，第3次8分钟...）
+     * 3. 清空 lockMark 解除锁定，更新 lockTime 为下次可执行时间
+     * 4. 消息永不删除，直到回调返回 true
+     */
     protected static function nackMySQL($mqName, $message, $delaySeconds = 0)
     {
         if (empty($message['_unqid']) || empty($message['_lockMark'])) {
@@ -870,19 +974,21 @@ class MqManager
             $pdo = self::getMySQLConnection();
             $now = date('Y-m-d H:i:s');
             
-            // 计算新的重试次数和等级
+            // 重试次数 + 1
             $syncCount = ($message['_syncCount'] ?? 0) + 1;
             $syncLevel = $syncCount;
             
-            // 计算锁定时间（下次可执行时间）
+            // 计算下次可执行时间
             if ($delaySeconds > 0) {
+                // 自定义延迟（回调返回正整数秒数）
                 $lockTime = date('Y-m-d H:i:s', time() + $delaySeconds);
             } else {
-                // 指数增长延迟：2^n 分钟
+                // 指数退避：2^n 分钟（1->2, 2->4, 3->8, 4->16...）
                 $delayMinutes = pow(2, $syncCount);
                 $lockTime = date('Y-m-d H:i:s', time() + $delayMinutes * 60);
             }
             
+            // 清空 lockMark 解锁，设置新的 lockTime 延迟重试
             $sql = "UPDATE `mq` SET 
                     `lockMark` = '', 
                     `syncCount` = :syncCount, 
@@ -1336,30 +1442,50 @@ class MqManager
 
     /**
      * 获取Redis键名
+     * 
+     * Redis存储结构说明：
+     * - queue    (List)       待处理消息队列，存储 unqid，FIFO
+     * - messages (Hash)       消息详情，unqid => JSON数据
+     * - delay    (Sorted Set) 延迟消息，score 为可执行时间戳
+     * - lock     (Hash)       锁定的消息，unqid => {lockMark, lockTime}
+     * - all      (Sorted Set) 全局消息索引，用于分页查询
+     * - names    (Set)        队列名称索引
+     * - groups   (Set)        队列组索引
      */
     protected static function getRedisKey($type, $mqName = '')
     {
         $vHost = self::$vHost;
         switch ($type) {
             case 'queue':
-                return "mq:{$vHost}:{$mqName}:queue";
+                return "mq:{$vHost}:{$mqName}:queue";      // List: 待处理队列
             case 'messages':
-                return "mq:{$vHost}:{$mqName}:messages";
+                return "mq:{$vHost}:{$mqName}:messages";   // Hash: 消息详情
             case 'delay':
-                return "mq:{$vHost}:{$mqName}:delay";
+                return "mq:{$vHost}:{$mqName}:delay";      // Sorted Set: 延迟队列
             case 'lock':
-                return "mq:{$vHost}:{$mqName}:lock";
+                return "mq:{$vHost}:{$mqName}:lock";       // Hash: 锁定的消息
             case 'all':
-                return "mq:{$vHost}:all_messages";
+                return "mq:{$vHost}:all_messages";         // Sorted Set: 全局索引
             case 'names':
-                return "mq:{$vHost}:names";
+                return "mq:{$vHost}:names";                // Set: 队列名称索引
             case 'groups':
-                return "mq:{$vHost}:groups";
+                return "mq:{$vHost}:groups";               // Set: 队列组索引
             default:
                 return "mq:{$vHost}:{$type}";
         }
     }
 
+    /**
+     * Redis存储：发送消息到队列
+     * 
+     * 核心逻辑：
+     * 1. 消息存储在 Hash（messages）中，unqid 为键
+     * 2. 延迟消费通过两个队列实现：
+     *    - 非延迟消息：直接加入 queue（List），可立即被 pop
+     *    - 延迟消息：加入 delay（Sorted Set），score 为可执行时间戳
+     * 3. 覆盖写入：相同 msgId 会先从旧队列移除，再加入新队列
+     * 4. 消费者 pop 时会先检查 delay 队列，将到期消息移到 queue
+     */
     protected static function setRedis($mqName, $data, $vhost = null, $group = null, $customMsgId = null, $delaySecond = 0)
     {
         try {
@@ -1367,26 +1493,28 @@ class MqManager
             $msgGroup = $group ?? self::$group;
             $redis = self::getRedisConnection($msgVHost);
             $msgId = $customMsgId ?? self::generateMsgId();
+            // unqid = MD5(vHost + group + mqName + msgId)
             $unqid = self::generateUnqidWithVHost($mqName, $msgId, $msgVHost, $msgGroup);
             $now = time();
             $nowStr = date('Y-m-d H:i:s', $now);
             
-            // 计算执行时间
+            // 计算可执行时间戳（用于延迟队列的 score）
             $executeTime = $delaySecond > 0 ? $now + $delaySecond : $now;
             $lockTime = $delaySecond > 0 ? date('Y-m-d H:i:s', $executeTime) : '2000-01-01 00:00:00';
             
+            // 消息体：id + data + time
             $message = [
                 'id' => $msgId,
                 'data' => $data,
                 'time' => $now
             ];
             
-            // 检查消息是否已存在（用于覆盖写入）
+            // 检查消息是否已存在（实现覆盖写入）
             $messagesKey = "mq:{$msgVHost}:{$mqName}:messages";
             $existingData = $redis->hGet($messagesKey, $unqid);
             $isUpdate = !empty($existingData);
             
-            // 消息详情
+            // 构建消息元数据（与MySQL字段保持一致）
             $msgData = [
                 'unqid' => $unqid,
                 'vHost' => $msgVHost,
@@ -1402,16 +1530,16 @@ class MqManager
                 'updateTime' => $nowStr
             ];
             
-            // 如果是更新，保留原来的createTime
+            // 覆盖写入：先从旧队列移除
             if ($isUpdate) {
                 $oldData = json_decode($existingData, true);
-                $msgData['createTime'] = $oldData['createTime'] ?? $nowStr;
+                $msgData['createTime'] = $oldData['createTime'] ?? $nowStr;  // 保留原创建时间
                 
-                // 从旧的队列中移除（可能在普通队列或延迟队列中）
+                // 从 queue 和 delay 两个队列中移除（不确定消息在哪个队列）
                 $queueKey = "mq:{$msgVHost}:{$mqName}:queue";
                 $delayKey = "mq:{$msgVHost}:{$mqName}:delay";
-                $redis->lRem($queueKey, 0, $unqid);
-                $redis->zRem($delayKey, $unqid);
+                $redis->lRem($queueKey, 0, $unqid);  // List: 移除所有匹配项
+                $redis->zRem($delayKey, $unqid);     // Sorted Set: 移除成员
             }
             
             // 保存消息到Hash
@@ -1596,6 +1724,20 @@ class MqManager
         }
     }
 
+    /**
+     * Redis存储：弹出一条消息进行消费
+     * 
+     * 核心逻辑（延迟队列转移机制）：
+     * 1. 先检查 delay（Sorted Set），将 score <= now 的到期消息移到 queue
+     * 2. 从 queue（List）左端弹出一条消息（FIFO）
+     * 3. 锁定消息：
+     *    - 更新 messages Hash 中的 lockMark 和 lockTime
+     *    - 同时在 lock Hash 中记录锁信息（用于超时检测）
+     * 4. 返回消息时附加内部字段：_unqid, _lockMark, _syncCount, _syncLevel
+     * 
+     * 注意：Redis 版本没有 MySQL 的锁超时检测机制，
+     * 如果消费者崩溃，需要外部定时任务清理超时锁
+     */
     protected static function popRedis($mqName)
     {
         try {
@@ -1603,51 +1745,51 @@ class MqManager
             $now = time();
             $lockMark = self::generateLockMark();
             
-            // 先检查延迟队列，将到期的消息移动到待处理队列
-            $delayKey = self::getRedisKey('delay', $mqName);
-            $queueKey = self::getRedisKey('queue', $mqName);
-            $messagesKey = self::getRedisKey('messages', $mqName);
-            $lockKey = self::getRedisKey('lock', $mqName);
+            $delayKey = self::getRedisKey('delay', $mqName);    // 延迟队列
+            $queueKey = self::getRedisKey('queue', $mqName);    // 待处理队列
+            $messagesKey = self::getRedisKey('messages', $mqName);  // 消息详情
+            $lockKey = self::getRedisKey('lock', $mqName);      // 锁定集合
             
-            // 获取所有到期的延迟消息
+            // 步骤1：将到期的延迟消息移到待处理队列
+            // zRangeByScore: 获取 score <= now 的所有成员（即已到执行时间的消息）
             $dueMessages = $redis->zRangeByScore($delayKey, '-inf', $now);
             foreach ($dueMessages as $unqid) {
-                $redis->zRem($delayKey, $unqid);
-                $redis->rPush($queueKey, $unqid);
+                $redis->zRem($delayKey, $unqid);     // 从延迟队列移除
+                $redis->rPush($queueKey, $unqid);   // 加入待处理队列尾部
             }
             
-            // 尝试从队列中获取消息
+            // 步骤2：从待处理队列左端弹出（FIFO）
             $unqid = $redis->lPop($queueKey);
             if (!$unqid) {
-                return null;
+                return null;  // 队列为空
             }
             
-            // 获取消息详情
+            // 步骤3：获取消息详情
             $msgData = $redis->hGet($messagesKey, $unqid);
             if (!$msgData) {
-                return null;
+                return null;  // 消息不存在（可能已被删除）
             }
             
             $row = json_decode($msgData, true);
             
-            // 锁定消息
+            // 步骤4：锁定消息（更新 messages 和 lock）
             $row['lockMark'] = $lockMark;
             $row['lockTime'] = date('Y-m-d H:i:s', $now);
             $redis->hSet($messagesKey, $unqid, json_encode($row, JSON_UNESCAPED_UNICODE));
             
-            // 添加到锁定集合
+            // 记录锁信息（用于超时检测和 ack 验证）
             $redis->hSet($lockKey, $unqid, json_encode([
                 'lockMark' => $lockMark,
                 'lockTime' => $now
             ]));
             
-            // 解析消息数据
+            // 步骤5：构建返回消息（附加内部字段）
             $message = json_decode($row['data'], true);
             if ($message) {
-                $message['_unqid'] = $unqid;
-                $message['_lockMark'] = $lockMark;
-                $message['_syncCount'] = (int)$row['syncCount'];
-                $message['_syncLevel'] = (int)$row['syncLevel'];
+                $message['_unqid'] = $unqid;           // 用于 ack/nack 定位消息
+                $message['_lockMark'] = $lockMark;    // 用于验证锁归属
+                $message['_syncCount'] = (int)$row['syncCount'];  // 重试次数
+                $message['_syncLevel'] = (int)$row['syncLevel'];  // 重试等级
             }
             
             return $message;
@@ -1657,6 +1799,13 @@ class MqManager
         }
     }
 
+    /**
+     * Redis存储：确认消费成功，删除消息
+     * 
+     * 核心逻辑：
+     * 1. 验证 lockMark 匹配，确保只有锁定者能删除
+     * 2. 同时删除 messages、lock、all 三处数据
+     */
     protected static function ackRedis($mqName, $message)
     {
         if (empty($message['_unqid']) || empty($message['_lockMark'])) {
@@ -1693,6 +1842,18 @@ class MqManager
         }
     }
 
+    /**
+     * Redis存储：消费失败，解锁消息并设置重试
+     * 
+     * 核心逻辑：
+     * 1. 重试次数 syncCount + 1
+     * 2. 延迟策略（指数退避）：
+     *    - 指定 delaySeconds：使用自定义延迟
+     *    - 未指定：2^n 分钟
+     * 3. 清空 lockMark，从 lock Hash 移除
+     * 4. 加入 delay（Sorted Set），score 为下次执行时间戳
+     *    - 下次 pop 时会检查 delay，到期后自动移到 queue
+     */
     protected static function nackRedis($mqName, $message, $delaySeconds = 0)
     {
         if (empty($message['_unqid']) || empty($message['_lockMark'])) {
@@ -1709,35 +1870,36 @@ class MqManager
             $lockKey = self::getRedisKey('lock', $mqName);
             $delayKey = self::getRedisKey('delay', $mqName);
             
-            // 计算新的重试次数和等级
+            // 重试次数 + 1
             $syncCount = ($message['_syncCount'] ?? 0) + 1;
             $syncLevel = $syncCount;
             
-            // 计算下次执行时间
+            // 计算下次可执行时间
             if ($delaySeconds > 0) {
+                // 自定义延迟（回调返回正整数秒数）
                 $executeTime = $now + $delaySeconds;
             } else {
-                // 指数增长延迟：2^n 分钟
+                // 指数退避：2^n 分钟（1->2, 2->4, 3->8...）
                 $delayMinutes = pow(2, $syncCount);
                 $executeTime = $now + $delayMinutes * 60;
             }
             
-            // 更新消息数据
+            // 更新 messages Hash 中的消息数据
             $msgData = $redis->hGet($messagesKey, $unqid);
             if ($msgData) {
                 $row = json_decode($msgData, true);
                 $row['syncCount'] = $syncCount;
                 $row['syncLevel'] = $syncLevel;
                 $row['lockTime'] = date('Y-m-d H:i:s', $executeTime);
-                $row['lockMark'] = '';
+                $row['lockMark'] = '';  // 清空锁标识
                 $row['updateTime'] = $nowStr;
                 $redis->hSet($messagesKey, $unqid, json_encode($row, JSON_UNESCAPED_UNICODE));
             }
             
-            // 从锁定集合移除
+            // 从 lock Hash 移除锁记录
             $redis->hDel($lockKey, $unqid);
             
-            // 添加到延迟队列
+            // 加入延迟队列（Sorted Set），score = 下次执行时间戳
             $redis->zAdd($delayKey, $executeTime, $unqid);
             
             return true;

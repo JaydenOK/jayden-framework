@@ -3,16 +3,41 @@
 namespace app\system;
 
 /**
- * 数据库连接管理器
+ * MySQL数据库连接管理器
  *
  * 支持多虚拟主机数据库连接池管理，支持多环境配置
+ * 主要用于消息队列的MySQL存储后端，也可独立使用
  *
+ * 配置文件：system/config/db.php（或对应环境的配置文件）
+ * 
  * 环境配置：
  * - 在项目入口文件定义常量 ENV 来选择环境
  * - 'local' 本地环境 -> db-local.php
- * - 'dev' 开发环境 -> db-dev.php
- * - 'test' 测试环境 -> db-test.php
- * - 'pro' 生产环境 -> db.php（默认）
+ * - 'dev'   开发环境 -> db-dev.php
+ * - 'test'  测试环境 -> db-test.php
+ * - 'pro'   生产环境 -> db.php（默认）
+ *
+ * 配置示例（system/config/db.php）：
+ * ```php
+ * return [
+ *     'default' => [
+ *         'adapter'  => 'mysql',    // 可省略，默认为mysql
+ *         'host'     => '127.0.0.1',
+ *         'port'     => 3306,
+ *         'user'     => 'root',
+ *         'password' => 'password',
+ *         'database' => 'mydb',
+ *         'charset'  => 'utf8mb4'
+ *     ],
+ *     // Redis虚拟主机（由RedisManager处理）
+ *     'redis_vhost' => [
+ *         'adapter'  => 'redis',
+ *         'host'     => '127.0.0.1',
+ *         'port'     => 6379,
+ *         // ...
+ *     ],
+ * ];
+ * ```
  *
  * 使用示例：
  * ```php
@@ -28,11 +53,37 @@ namespace app\system;
  * // 获取当前环境
  * $env = DbManager::getEnv();  // 'local', 'dev', 'test', 'pro'
  *
+ * // 检查虚拟主机是否为MySQL类型
+ * if (DbManager::isMySQLVHost('default')) {
+ *     // ...
+ * }
+ *
  * // 关闭指定连接
  * DbManager::close('iscs');
  *
  * // 关闭所有连接
  * DbManager::closeAll();
+ * ```
+ *
+ * 消息队列MySQL表结构：
+ * ```sql
+ * CREATE TABLE `mq` (
+ *   `unqid` char(35) NOT NULL COMMENT '消息唯一ID',
+ *   `vHost` char(50) NOT NULL COMMENT '虚拟主机',
+ *   `group` char(50) NOT NULL COMMENT '队列组',
+ *   `name` char(50) NOT NULL COMMENT '队列名称',
+ *   `msgId` char(110) NOT NULL COMMENT '消息ID',
+ *   `data` longtext NOT NULL COMMENT '消息数据(JSON)',
+ *   `syncCount` int(11) NOT NULL COMMENT '重试次数',
+ *   `updateTime` timestamp NOT NULL COMMENT '更新时间',
+ *   `createTime` timestamp NOT NULL COMMENT '创建时间',
+ *   `syncLevel` int(11) NOT NULL COMMENT '重试等级',
+ *   `lockTime` timestamp NOT NULL COMMENT '锁定/延迟执行时间',
+ *   `lockMark` char(32) NOT NULL COMMENT '锁定标识',
+ *   PRIMARY KEY (`name`,`unqid`),
+ *   KEY `idx_msgId` (`msgId`),
+ *   KEY `idx_consumer` (`lockTime`,`name`,`group`)
+ * ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
  * ```
  */
 class DbManager
