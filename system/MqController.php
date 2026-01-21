@@ -966,7 +966,7 @@ HTML;
             }
         }
 
-        $vbs = strtr(__DIR__, '/', '\\') . '\\asyncProc.vbs';
+        $vbs = strtr(__DIR__, '/', '\\') . '\\bin\\asyncProc.vbs';
         if (is_file($vbs)) {
             $exec = str_replace('"', '""', '"' . join('" "', $cmd) . '"');
             pclose(popen('SET data="' . $exec . '" && cscript //E:vbscript "' . $vbs . '"', 'r'));
@@ -1319,7 +1319,7 @@ HTML;
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fa; min-height: 100vh; padding: 15px; }
-        .container { max-width: 1400px; margin: 0 auto; }
+        .container { max-width: 1800px; margin: 0 auto; }
         .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px; flex-wrap: wrap; gap: 10px; }
         .header h1 { color: #333; font-size: 20px; display: flex; align-items: center; gap: 8px; }
         .help-icon { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; background: #1890ff; color: #fff; border-radius: 50%; font-size: 12px; cursor: help; position: relative; }
@@ -1442,11 +1442,11 @@ php index.php system/mq/status  # 查看状态</pre>
                         <tr>
                             <th style="width:80px;">虚拟主机</th>
                             <th style="width:140px;">队列名称</th>
-                            <th style="width:80px;">待处理</th>
+                            <th>回调方法</th>
                             <th style="width:80px;">消费者</th>
                             <th style="width:200px;">运行状态</th>
-                            <th>回调方法</th>
-                            <th style="width:100px;">测试</th>
+                            <th style="width:80px;">待处理消息数</th>
+                            <th style="width:100px;">发送测试</th>
                         </tr>
                     </thead>
                     <tbody id="queueList">
@@ -1554,10 +1554,10 @@ php index.php system/mq/status  # 查看状态</pre>
                     
                     html += "<tr>" + vhostCell +
                         "<td class='queue-name'>" + mqName + "</td>" +
-                        "<td><span class='msg-count'>" + queue.messageCount + "</span></td>" +
+                        "<td class='callback-cell' title='" + queue.call + "'>" + queue.call + "</td>" +
                         "<td><span class='" + statusClass + "'>" + queue.runningCount + "/" + queue.consumerConfig + "</span></td>" +
                         "<td class='consumer-list'>" + consumerText + "</td>" +
-                        "<td class='callback-cell' title='" + queue.call + "'>" + queue.call + "</td>" +
+                        "<td><span class='msg-count'>" + queue.messageCount + "</span></td>" +
                         "<td class='action-cell'>" +
                             "<button onclick=\"sendTest('" + vHost + "', '" + mqName + "')\" class='btn-mini'>+1</button>" +
                             "<button onclick=\"sendTest('" + vHost + "', '" + mqName + "', 10)\" class='btn-mini'>+10</button>" +
@@ -1972,7 +1972,7 @@ HTML;
                     <td class="time-cell">${item.updateTime}</td>
                     <td>
                         <div class="action-btns">
-                            <button class="btn btn-sm btn-view" onclick="showDataModal('${escapeAttr(vHost)}', '${escapeAttr(item.name)}', '${escapeAttr(item.unqid)}')">查看</button>
+                            <button class="btn btn-sm btn-view" onclick="showDataModal('${escapeAttr(vHost)}', '${escapeAttr(item.name)}', '${escapeAttr(item.unqid)}')">查看数据</button>
                             <button class="btn btn-sm btn-success" onclick="executeMessage('${escapeAttr(vHost)}', '${escapeAttr(item.name)}', '${escapeAttr(item.unqid)}')" ${item.lockMark ? 'disabled' : ''}>执行</button>
                             <button class="btn btn-sm btn-primary" onclick="executeInNewPage('${escapeAttr(vHost)}', '${escapeAttr(item.name)}', '${escapeAttr(item.unqid)}')" ${item.lockMark ? 'disabled' : ''}>新页面执行</button>
                             <button class="btn btn-sm btn-warning" onclick="resetMessage('${escapeAttr(vHost)}', '${escapeAttr(item.name)}', '${escapeAttr(item.unqid)}')" ${isFailed ? '' : 'disabled'}>重置</button>

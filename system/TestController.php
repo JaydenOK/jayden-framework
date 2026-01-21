@@ -67,6 +67,20 @@ class TestController extends Controller
         return 600;
     }
 
+    //测试队列testRedisMq - 消费者回调
+    public static function testRedisMq($message)
+    {
+        // 记录开始处理
+        $logFile = __DIR__ . '/data/mq/log/testRedisMq.log';
+        $logDir = dirname($logFile);
+        if (!is_dir($logDir)) {
+            mkdir($logDir, 0777, true);
+        }
+        file_put_contents($logFile, date('[Y-m-d H:i:s]') . json_encode($message, JSON_UNESCAPED_UNICODE) . PHP_EOL, FILE_APPEND);
+        sleep(5);       //模拟程序正在执行，延迟锁定
+        return 600;
+    }
+
     /**
      * 测试发送消息到队列
      * @link http://jayden.cc/system/test/sendMq

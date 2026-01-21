@@ -236,6 +236,69 @@ class DbManager
     }
 
     /**
+     * 获取虚拟主机的适配器类型
+     * @param string $vHost 虚拟主机名称
+     * @return string 'mysql' 或 'redis'
+     */
+    public static function getAdapter($vHost = 'default')
+    {
+        $config = self::getConfig($vHost);
+        return $config['adapter'] ?? 'mysql';
+    }
+
+    /**
+     * 检查虚拟主机是否为MySQL类型
+     * @param string $vHost 虚拟主机名称
+     * @return bool
+     */
+    public static function isMySQLVHost($vHost)
+    {
+        return self::getAdapter($vHost) === 'mysql';
+    }
+
+    /**
+     * 检查虚拟主机是否为Redis类型
+     * @param string $vHost 虚拟主机名称
+     * @return bool
+     */
+    public static function isRedisVHost($vHost)
+    {
+        return self::getAdapter($vHost) === 'redis';
+    }
+
+    /**
+     * 获取所有MySQL类型的虚拟主机列表
+     * @return array
+     */
+    public static function getMySQLVHostList()
+    {
+        $configs = self::getAllConfigs();
+        $list = [];
+        foreach ($configs as $vHost => $config) {
+            if (($config['adapter'] ?? 'mysql') === 'mysql') {
+                $list[] = $vHost;
+            }
+        }
+        return $list;
+    }
+
+    /**
+     * 获取所有Redis类型的虚拟主机列表
+     * @return array
+     */
+    public static function getRedisVHostList()
+    {
+        $configs = self::getAllConfigs();
+        $list = [];
+        foreach ($configs as $vHost => $config) {
+            if (($config['adapter'] ?? 'mysql') === 'redis') {
+                $list[] = $vHost;
+            }
+        }
+        return $list;
+    }
+
+    /**
      * 检查虚拟主机是否存在
      * @param string $vHost 虚拟主机名称
      * @return bool

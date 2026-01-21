@@ -48,4 +48,14 @@ return [
         ],
     ],
 
+    //oms 虚拟主机池，redis
+    'oms' => [
+        'testRedisMq' => [
+            // 启动消费者进程数量
+            'cNum' => 2,
+            // 队列消费方法（接收参数为消息数组，包含 id, data, time 等字段）
+            'call' => 'app\system\TestController::testRedisMq'
+        ],
+    ],
+
 ];

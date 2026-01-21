@@ -3,13 +3,16 @@
 namespace app\system;
 
 use app\system\DbManager;
+use app\system\RedisManager;
 
 /**
- * 消息队列管理器（静态类）- MySQL存储版本
+ * 消息队列管理器（静态类）- 支持MySQL和Redis双存储
  *
- * 队列存储方式：使用MySQL数据库存储（通过DbManager管理连接）
+ * 队列存储方式：根据虚拟主机配置的adapter字段自动选择存储后端
+ * - adapter = 'mysql' 使用MySQL数据库存储
+ * - adapter = 'redis' 使用Redis存储
  *
- * 表结构：
+ * MySQL表结构：
  * CREATE TABLE `mq` (
  *   `unqid` char(35) NOT NULL COMMENT '消息唯一ID(虚拟主机+队列组+队列名称+消息ID)',
  *   `vHost` char(50) NOT NULL COMMENT '虚拟主机，默认default',
@@ -27,6 +30,15 @@ use app\system\DbManager;
  *   KEY `idx_msgId` (`msgId`) USING BTREE,
  *   KEY `idx_consumer` (`lockTime`,`name`,`group`) USING BTREE
  * ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='消息队列表'
+ *
+ * Redis存储结构：
+ * - mq:{vHost}:{mqName}:queue      - List，待处理消息队列（存储unqid）
+ * - mq:{vHost}:{mqName}:messages   - Hash，消息详情（unqid => json数据）
+ * - mq:{vHost}:{mqName}:delay      - Sorted Set，延迟消息（score为可执行时间戳）
+ * - mq:{vHost}:{mqName}:lock       - Hash，锁定的消息（unqid => lockMark）
+ * - mq:{vHost}:all_messages        - Sorted Set，所有消息索引（用于分页，score为创建时间戳）
+ * - mq:{vHost}:names               - Set，队列名称索引
+ * - mq:{vHost}:groups              - Set，队列组索引
  *
  * 使用示例：
  * ```php
@@ -55,13 +67,33 @@ class MqManager
     protected static $lockTimeout = 300;
 
     /**
-     * 获取数据库连接
+     * 获取当前虚拟主机的适配器类型
+     * @param string|null $vHost 虚拟主机名称
+     * @return string 'mysql' 或 'redis'
+     */
+    protected static function getAdapter($vHost = null)
+    {
+        return DbManager::getAdapter($vHost ?? self::$vHost);
+    }
+
+    /**
+     * 获取MySQL数据库连接
      * @param string|null $vHost 虚拟主机名称
      * @return \PDO
      */
-    protected static function getConnection($vHost = null)
+    protected static function getMySQLConnection($vHost = null)
     {
         return DbManager::getConnection($vHost ?? self::$vHost);
+    }
+
+    /**
+     * 获取Redis连接
+     * @param string|null $vHost 虚拟主机名称
+     * @return \Redis
+     */
+    protected static function getRedisConnection($vHost = null)
+    {
+        return RedisManager::getConnection($vHost ?? self::$vHost);
     }
 
     /**
@@ -142,10 +174,15 @@ class MqManager
         return md5(uniqid(mt_rand(), true) . getmypid());
     }
 
+    // ==================== 公共接口（自动路由到对应存储） ====================
+
     /**
      * 发送消息到队列
      * 
-     * @param string $mqName 队列名称
+     * @param string|array $mqName 队列名称，当为数组时格式为 [$mqName, $msgId, $delaySecond]
+     *                             - $mqName: 队列名称（必填）
+     *                             - $msgId: 消息ID（可选），未传则系统自动生成，如果重复则覆盖写入
+     *                             - $delaySecond: 延迟秒数（可选），未填写则立即执行，填写则延迟指定秒数后执行
      * @param mixed $data 消息数据
      * @param string|null $vhost 虚拟主机（可选，默认default）
      * @param string|null $group 队列组（可选，默认default）
@@ -153,40 +190,23 @@ class MqManager
      */
     public static function set($mqName, $data, $vhost = null, $group = null)
     {
-        try {
-            $msgVHost = $vhost ?? self::$vHost;
-            $msgGroup = $group ?? self::$group;
-            $pdo = self::getConnection($msgVHost);
-            $msgId = self::generateMsgId();
-            $unqid = self::generateUnqidWithVHost($mqName, $msgId, $msgVHost, $msgGroup);
-            $now = date('Y-m-d H:i:s');
-            
-            $message = [
-                'id' => $msgId,
-                'data' => $data,
-                'time' => time()
-            ];
-            
-            $sql = "INSERT INTO `mq` (`unqid`, `vHost`, `group`, `name`, `msgId`, `data`, `syncCount`, `updateTime`, `createTime`, `syncLevel`, `lockTime`, `lockMark`) 
-                    VALUES (:unqid, :vHost, :group, :name, :msgId, :data, 0, :updateTime, :createTime, 0, '2000-01-01 00:00:00', '')";
-            
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute([
-                ':unqid'      => $unqid,
-                ':vHost'      => $msgVHost,
-                ':group'      => $msgGroup,
-                ':name'       => $mqName,
-                ':msgId'      => $msgId,
-                ':data'       => json_encode($message, JSON_UNESCAPED_UNICODE),
-                ':updateTime' => $now,
-                ':createTime' => $now
-            ]);
-            
-            return $msgId;
-        } catch (\PDOException $e) {
-            error_log("[MqManager::set] Error: " . $e->getMessage());
-            return false;
+        // 解析参数
+        $customMsgId = null;
+        $delaySecond = 0;
+        
+        if (is_array($mqName)) {
+            $customMsgId = $mqName[1] ?? null;
+            $delaySecond = (int)($mqName[2] ?? 0);
+            $mqName = $mqName[0];
         }
+        
+        $msgVHost = $vhost ?? self::$vHost;
+        $adapter = self::getAdapter($msgVHost);
+        
+        if ($adapter === 'redis') {
+            return self::setRedis($mqName, $data, $vhost, $group, $customMsgId, $delaySecond);
+        }
+        return self::setMySQL($mqName, $data, $vhost, $group, $customMsgId, $delaySecond);
     }
 
     /**
@@ -218,8 +238,400 @@ class MqManager
      */
     public static function push($mqName, $message, $delaySeconds = 0)
     {
+        $adapter = self::getAdapter();
+        
+        if ($adapter === 'redis') {
+            return self::pushRedis($mqName, $message, $delaySeconds);
+        }
+        return self::pushMySQL($mqName, $message, $delaySeconds);
+    }
+
+    /**
+     * 获取队列长度
+     * @param string $mqName 队列名称
+     * @return int
+     */
+    public static function length($mqName)
+    {
+        $adapter = self::getAdapter();
+        
+        if ($adapter === 'redis') {
+            return self::lengthRedis($mqName);
+        }
+        return self::lengthMySQL($mqName);
+    }
+
+    /**
+     * 清空队列
+     * @param string $mqName 队列名称
+     * @return bool
+     */
+    public static function clear($mqName)
+    {
+        $adapter = self::getAdapter();
+        
+        if ($adapter === 'redis') {
+            return self::clearRedis($mqName);
+        }
+        return self::clearMySQL($mqName);
+    }
+
+    /**
+     * 预览队列消息（不消费）
+     * @param string $mqName 队列名称
+     * @param int $limit 限制数量
+     * @return array
+     */
+    public static function peek($mqName, $limit = 10)
+    {
+        $adapter = self::getAdapter();
+        
+        if ($adapter === 'redis') {
+            return self::peekRedis($mqName, $limit);
+        }
+        return self::peekMySQL($mqName, $limit);
+    }
+
+    /**
+     * 弹出一条消息（消费）
+     * 使用锁机制防止多进程竞争
+     * 只锁定消息，不删除。消费成功后调用 ack() 删除，失败调用 nack() 解锁重试
+     * 
+     * @param string $mqName 队列名称
+     * @return array|null 消息数据（含 _unqid, _lockMark 用于后续操作），无消息时返回null
+     */
+    public static function pop($mqName)
+    {
+        $adapter = self::getAdapter();
+        
+        if ($adapter === 'redis') {
+            return self::popRedis($mqName);
+        }
+        return self::popMySQL($mqName);
+    }
+
+    /**
+     * 确认消息消费成功，删除消息
+     * @param string $mqName 队列名称
+     * @param array $message pop返回的消息（需含 _unqid, _lockMark）
+     * @return bool
+     */
+    public static function ack($mqName, $message)
+    {
+        $adapter = self::getAdapter();
+        
+        if ($adapter === 'redis') {
+            return self::ackRedis($mqName, $message);
+        }
+        return self::ackMySQL($mqName, $message);
+    }
+
+    /**
+     * 消息消费失败，解锁并设置重试
+     * @param string $mqName 队列名称
+     * @param array $message pop返回的消息（需含 _unqid, _lockMark, _syncCount）
+     * @param int $delaySeconds 延迟秒数，0表示使用默认指数延迟
+     * @return bool
+     */
+    public static function nack($mqName, $message, $delaySeconds = 0)
+    {
+        $adapter = self::getAdapter();
+        
+        if ($adapter === 'redis') {
+            return self::nackRedis($mqName, $message, $delaySeconds);
+        }
+        return self::nackMySQL($mqName, $message, $delaySeconds);
+    }
+
+    /**
+     * 将消息重新放回队列头部（消费失败时）
+     * @param string $mqName 队列名称
+     * @param array $message 消息数据
+     * @return bool
+     */
+    public static function unshift($mqName, $message)
+    {
+        $adapter = self::getAdapter();
+        
+        if ($adapter === 'redis') {
+            return self::unshiftRedis($mqName, $message);
+        }
+        return self::unshiftMySQL($mqName, $message);
+    }
+
+    /**
+     * 根据消息ID获取消息
+     * @param string $msgId 消息ID
+     * @return array|null
+     */
+    public static function getByMsgId($msgId)
+    {
+        $adapter = self::getAdapter();
+        
+        if ($adapter === 'redis') {
+            return self::getByMsgIdRedis($msgId);
+        }
+        return self::getByMsgIdMySQL($msgId);
+    }
+
+    /**
+     * 删除指定消息
+     * @param string $msgId 消息ID
+     * @return bool
+     */
+    public static function delete($msgId)
+    {
+        $adapter = self::getAdapter();
+        
+        if ($adapter === 'redis') {
+            return self::deleteRedis($msgId);
+        }
+        return self::deleteMySQL($msgId);
+    }
+
+    /**
+     * 获取所有队列统计信息
+     * @return array
+     */
+    public static function stats()
+    {
+        $adapter = self::getAdapter();
+        
+        if ($adapter === 'redis') {
+            return self::statsRedis();
+        }
+        return self::statsMySQL();
+    }
+
+    /**
+     * 释放超时锁定的消息
+     * @return int 释放的消息数量
+     */
+    public static function releaseExpiredLocks()
+    {
+        $adapter = self::getAdapter();
+        
+        if ($adapter === 'redis') {
+            return self::releaseExpiredLocksRedis();
+        }
+        return self::releaseExpiredLocksMySQL();
+    }
+
+    /**
+     * 关闭数据库连接
+     * @param string|null $vHost 虚拟主机名称，null表示关闭所有连接
+     */
+    public static function close($vHost = null)
+    {
+        if ($vHost !== null) {
+            $adapter = self::getAdapter($vHost);
+            if ($adapter === 'redis') {
+                RedisManager::close($vHost);
+            } else {
+                DbManager::close($vHost);
+            }
+        } else {
+            DbManager::closeAll();
+            RedisManager::closeAll();
+        }
+    }
+
+    /**
+     * 分页查询消息列表
+     * @param array $filter 筛选条件
+     * @param int $page 页码
+     * @param int $pageSize 每页数量
+     * @return array ['list' => [], 'total' => 0, 'page' => 1, 'pageSize' => 20]
+     */
+    public static function getList($filter = [], $page = 1, $pageSize = 20)
+    {
+        $adapter = self::getAdapter();
+        
+        if ($adapter === 'redis') {
+            return self::getListRedis($filter, $page, $pageSize);
+        }
+        return self::getListMySQL($filter, $page, $pageSize);
+    }
+
+    /**
+     * 获取所有队列名称列表
+     * @return array
+     */
+    public static function getNameList()
+    {
+        $adapter = self::getAdapter();
+        
+        if ($adapter === 'redis') {
+            return self::getNameListRedis();
+        }
+        return self::getNameListMySQL();
+    }
+
+    /**
+     * 获取所有队列组列表
+     * @return array
+     */
+    public static function getGroupList()
+    {
+        $adapter = self::getAdapter();
+        
+        if ($adapter === 'redis') {
+            return self::getGroupListRedis();
+        }
+        return self::getGroupListMySQL();
+    }
+
+    /**
+     * 根据unqid和name获取消息详情
+     * @param string $name 队列名称
+     * @param string $unqid 消息唯一标识
+     * @return array|null
+     */
+    public static function getByUnqid($name, $unqid)
+    {
+        $adapter = self::getAdapter();
+        
+        if ($adapter === 'redis') {
+            return self::getByUnqidRedis($name, $unqid);
+        }
+        return self::getByUnqidMySQL($name, $unqid);
+    }
+
+    /**
+     * 根据unqid和name删除消息
+     * @param string $name 队列名称
+     * @param string $unqid 消息唯一标识
+     * @return bool
+     */
+    public static function deleteByUnqid($name, $unqid)
+    {
+        $adapter = self::getAdapter();
+        
+        if ($adapter === 'redis') {
+            return self::deleteByUnqidRedis($name, $unqid);
+        }
+        return self::deleteByUnqidMySQL($name, $unqid);
+    }
+
+    /**
+     * 重置失败消息
+     * 将锁定时间改为当前时间，重试次数和等级清零
+     * @param string $name 队列名称
+     * @param string $unqid 消息唯一标识
+     * @return bool
+     */
+    public static function resetByUnqid($name, $unqid)
+    {
+        $adapter = self::getAdapter();
+        
+        if ($adapter === 'redis') {
+            return self::resetByUnqidRedis($name, $unqid);
+        }
+        return self::resetByUnqidMySQL($name, $unqid);
+    }
+
+    /**
+     * 锁定消息（用于手动执行）
+     * @param string $name 队列名称
+     * @param string $unqid 消息唯一标识
+     * @return string|false 返回锁标识，失败返回false
+     */
+    public static function lockByUnqid($name, $unqid)
+    {
+        $adapter = self::getAdapter();
+        
+        if ($adapter === 'redis') {
+            return self::lockByUnqidRedis($name, $unqid);
+        }
+        return self::lockByUnqidMySQL($name, $unqid);
+    }
+
+    /**
+     * 解锁消息（执行失败时放回队列）
+     * @param string $name 队列名称
+     * @param string $unqid 消息唯一标识
+     * @param string $lockMark 锁标识
+     * @param bool $incrementRetry 是否增加重试次数
+     * @param int $delaySeconds 自定义延迟秒数，0表示使用默认延迟
+     * @return bool
+     */
+    public static function unlockByUnqid($name, $unqid, $lockMark, $incrementRetry = true, $delaySeconds = 0)
+    {
+        $adapter = self::getAdapter();
+        
+        if ($adapter === 'redis') {
+            return self::unlockByUnqidRedis($name, $unqid, $lockMark, $incrementRetry, $delaySeconds);
+        }
+        return self::unlockByUnqidMySQL($name, $unqid, $lockMark, $incrementRetry, $delaySeconds);
+    }
+
+    /**
+     * 确认消息消费完成并删除（通过unqid）
+     * @param string $name 队列名称
+     * @param string $unqid 消息唯一标识
+     * @param string $lockMark 锁标识
+     * @return bool
+     */
+    public static function ackByUnqid($name, $unqid, $lockMark)
+    {
+        $adapter = self::getAdapter();
+        
+        if ($adapter === 'redis') {
+            return self::ackByUnqidRedis($name, $unqid, $lockMark);
+        }
+        return self::ackByUnqidMySQL($name, $unqid, $lockMark);
+    }
+
+    // ==================== MySQL 存储实现 ====================
+
+    protected static function setMySQL($mqName, $data, $vhost = null, $group = null, $customMsgId = null, $delaySecond = 0)
+    {
         try {
-            $pdo = self::getConnection();
+            $msgVHost = $vhost ?? self::$vHost;
+            $msgGroup = $group ?? self::$group;
+            $pdo = self::getMySQLConnection($msgVHost);
+            $msgId = $customMsgId ?? self::generateMsgId();
+            $unqid = self::generateUnqidWithVHost($mqName, $msgId, $msgVHost, $msgGroup);
+            $now = time();
+            $nowStr = date('Y-m-d H:i:s', $now);
+            
+            // 计算锁定时间（延迟执行时间）
+            $lockTime = $delaySecond > 0 ? date('Y-m-d H:i:s', $now + $delaySecond) : '2000-01-01 00:00:00';
+            
+            $message = [
+                'id' => $msgId,
+                'data' => $data,
+                'time' => $now
+            ];
+            
+            // 使用 REPLACE INTO 实现覆盖写入（msgId重复时覆盖）
+            $sql = "REPLACE INTO `mq` (`unqid`, `vHost`, `group`, `name`, `msgId`, `data`, `syncCount`, `updateTime`, `createTime`, `syncLevel`, `lockTime`, `lockMark`) 
+                    VALUES (:unqid, :vHost, :group, :name, :msgId, :data, 0, :updateTime, :createTime, 0, :lockTime, '')";
+            
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute([
+                ':unqid'      => $unqid,
+                ':vHost'      => $msgVHost,
+                ':group'      => $msgGroup,
+                ':name'       => $mqName,
+                ':msgId'      => $msgId,
+                ':data'       => json_encode($message, JSON_UNESCAPED_UNICODE),
+                ':updateTime' => $nowStr,
+                ':createTime' => $nowStr,
+                ':lockTime'   => $lockTime
+            ]);
+            
+            return $msgId;
+        } catch (\PDOException $e) {
+            error_log("[MqManager::setMySQL] Error: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    protected static function pushMySQL($mqName, $message, $delaySeconds = 0)
+    {
+        try {
+            $pdo = self::getMySQLConnection();
             $msgId = $message['id'] ?? self::generateMsgId();
             $unqid = self::generateUnqid($mqName, $msgId);
             $now = date('Y-m-d H:i:s');
@@ -291,60 +703,44 @@ class MqManager
             
             return true;
         } catch (\PDOException $e) {
-            error_log("[MqManager::push] Error: " . $e->getMessage());
+            error_log("[MqManager::pushMySQL] Error: " . $e->getMessage());
             return false;
         }
     }
 
-    /**
-     * 获取队列长度
-     * @param string $mqName 队列名称
-     * @return int
-     */
-    public static function length($mqName)
+    protected static function lengthMySQL($mqName)
     {
         try {
-            $pdo = self::getConnection();
+            $pdo = self::getMySQLConnection();
             $sql = "SELECT COUNT(*) as cnt FROM `mq` WHERE `name` = :name AND `vHost` = :vHost";
             $stmt = $pdo->prepare($sql);
             $stmt->execute([':name' => $mqName, ':vHost' => self::$vHost]);
             $row = $stmt->fetch();
             return (int)($row['cnt'] ?? 0);
         } catch (\PDOException $e) {
-            error_log("[MqManager::length] Error: " . $e->getMessage());
+            error_log("[MqManager::lengthMySQL] Error: " . $e->getMessage());
             return 0;
         }
     }
 
-    /**
-     * 清空队列
-     * @param string $mqName 队列名称
-     * @return bool
-     */
-    public static function clear($mqName)
+    protected static function clearMySQL($mqName)
     {
         try {
-            $pdo = self::getConnection();
+            $pdo = self::getMySQLConnection();
             $sql = "DELETE FROM `mq` WHERE `name` = :name AND `vHost` = :vHost";
             $stmt = $pdo->prepare($sql);
             $stmt->execute([':name' => $mqName, ':vHost' => self::$vHost]);
             return true;
         } catch (\PDOException $e) {
-            error_log("[MqManager::clear] Error: " . $e->getMessage());
+            error_log("[MqManager::clearMySQL] Error: " . $e->getMessage());
             return false;
         }
     }
 
-    /**
-     * 预览队列消息（不消费）
-     * @param string $mqName 队列名称
-     * @param int $limit 限制数量
-     * @return array
-     */
-    public static function peek($mqName, $limit = 10)
+    protected static function peekMySQL($mqName, $limit = 10)
     {
         try {
-            $pdo = self::getConnection();
+            $pdo = self::getMySQLConnection();
             $sql = "SELECT `data` FROM `mq` 
                     WHERE `name` = :name AND `vHost` = :vHost 
                     ORDER BY `syncLevel` ASC, `createTime` ASC 
@@ -363,23 +759,15 @@ class MqManager
             }
             return $messages;
         } catch (\PDOException $e) {
-            error_log("[MqManager::peek] Error: " . $e->getMessage());
+            error_log("[MqManager::peekMySQL] Error: " . $e->getMessage());
             return [];
         }
     }
 
-    /**
-     * 弹出一条消息（消费）
-     * 使用锁机制防止多进程竞争
-     * 只锁定消息，不删除。消费成功后调用 ack() 删除，失败调用 nack() 解锁重试
-     * 
-     * @param string $mqName 队列名称
-     * @return array|null 消息数据（含 _unqid, _lockMark 用于后续操作），无消息时返回null
-     */
-    public static function pop($mqName)
+    protected static function popMySQL($mqName)
     {
         try {
-            $pdo = self::getConnection();
+            $pdo = self::getMySQLConnection();
             $now = date('Y-m-d H:i:s');
             $lockMark = self::generateLockMark();
             
@@ -440,25 +828,19 @@ class MqManager
             }
             return $message;
         } catch (\PDOException $e) {
-            error_log("[MqManager::pop] Error: " . $e->getMessage());
+            error_log("[MqManager::popMySQL] Error: " . $e->getMessage());
             return null;
         }
     }
 
-    /**
-     * 确认消息消费成功，删除消息
-     * @param string $mqName 队列名称
-     * @param array $message pop返回的消息（需含 _unqid, _lockMark）
-     * @return bool
-     */
-    public static function ack($mqName, $message)
+    protected static function ackMySQL($mqName, $message)
     {
         if (empty($message['_unqid']) || empty($message['_lockMark'])) {
             return false;
         }
         
         try {
-            $pdo = self::getConnection();
+            $pdo = self::getMySQLConnection();
             $sql = "DELETE FROM `mq` 
                     WHERE `name` = :name 
                     AND `unqid` = :unqid 
@@ -473,26 +855,19 @@ class MqManager
             ]);
             return $stmt->rowCount() > 0;
         } catch (\PDOException $e) {
-            error_log("[MqManager::ack] Error: " . $e->getMessage());
+            error_log("[MqManager::ackMySQL] Error: " . $e->getMessage());
             return false;
         }
     }
 
-    /**
-     * 消息消费失败，解锁并设置重试
-     * @param string $mqName 队列名称
-     * @param array $message pop返回的消息（需含 _unqid, _lockMark, _syncCount）
-     * @param int $delaySeconds 延迟秒数，0表示使用默认指数延迟
-     * @return bool
-     */
-    public static function nack($mqName, $message, $delaySeconds = 0)
+    protected static function nackMySQL($mqName, $message, $delaySeconds = 0)
     {
         if (empty($message['_unqid']) || empty($message['_lockMark'])) {
             return false;
         }
         
         try {
-            $pdo = self::getConnection();
+            $pdo = self::getMySQLConnection();
             $now = date('Y-m-d H:i:s');
             
             // 计算新的重试次数和等级
@@ -531,21 +906,15 @@ class MqManager
             ]);
             return $stmt->rowCount() > 0;
         } catch (\PDOException $e) {
-            error_log("[MqManager::nack] Error: " . $e->getMessage());
+            error_log("[MqManager::nackMySQL] Error: " . $e->getMessage());
             return false;
         }
     }
 
-    /**
-     * 将消息重新放回队列头部（消费失败时）
-     * @param string $mqName 队列名称
-     * @param array $message 消息数据
-     * @return bool
-     */
-    public static function unshift($mqName, $message)
+    protected static function unshiftMySQL($mqName, $message)
     {
         try {
-            $pdo = self::getConnection();
+            $pdo = self::getMySQLConnection();
             $msgId = $message['id'] ?? self::generateMsgId();
             $unqid = self::generateUnqid($mqName, $msgId);
             $now = date('Y-m-d H:i:s');
@@ -592,58 +961,44 @@ class MqManager
             
             return true;
         } catch (\PDOException $e) {
-            error_log("[MqManager::unshift] Error: " . $e->getMessage());
+            error_log("[MqManager::unshiftMySQL] Error: " . $e->getMessage());
             return false;
         }
     }
 
-    /**
-     * 根据消息ID获取消息
-     * @param string $msgId 消息ID
-     * @return array|null
-     */
-    public static function getByMsgId($msgId)
+    protected static function getByMsgIdMySQL($msgId)
     {
         try {
-            $pdo = self::getConnection();
+            $pdo = self::getMySQLConnection();
             $sql = "SELECT `data` FROM `mq` WHERE `msgId` = :msgId AND `vHost` = :vHost LIMIT 1";
             $stmt = $pdo->prepare($sql);
             $stmt->execute([':msgId' => $msgId, ':vHost' => self::$vHost]);
             $row = $stmt->fetch();
             return $row ? json_decode($row['data'], true) : null;
         } catch (\PDOException $e) {
-            error_log("[MqManager::getByMsgId] Error: " . $e->getMessage());
+            error_log("[MqManager::getByMsgIdMySQL] Error: " . $e->getMessage());
             return null;
         }
     }
 
-    /**
-     * 删除指定消息
-     * @param string $msgId 消息ID
-     * @return bool
-     */
-    public static function delete($msgId)
+    protected static function deleteMySQL($msgId)
     {
         try {
-            $pdo = self::getConnection();
+            $pdo = self::getMySQLConnection();
             $sql = "DELETE FROM `mq` WHERE `msgId` = :msgId AND `vHost` = :vHost";
             $stmt = $pdo->prepare($sql);
             $stmt->execute([':msgId' => $msgId, ':vHost' => self::$vHost]);
             return $stmt->rowCount() > 0;
         } catch (\PDOException $e) {
-            error_log("[MqManager::delete] Error: " . $e->getMessage());
+            error_log("[MqManager::deleteMySQL] Error: " . $e->getMessage());
             return false;
         }
     }
 
-    /**
-     * 获取所有队列统计信息
-     * @return array
-     */
-    public static function stats()
+    protected static function statsMySQL()
     {
         try {
-            $pdo = self::getConnection();
+            $pdo = self::getMySQLConnection();
             $sql = "SELECT `name`, COUNT(*) as cnt, 
                     SUM(CASE WHEN `lockMark` != '' AND `lockTime` > :expireTime THEN 1 ELSE 0 END) as locked
                     FROM `mq` 
@@ -664,19 +1019,15 @@ class MqManager
             }
             return $stats;
         } catch (\PDOException $e) {
-            error_log("[MqManager::stats] Error: " . $e->getMessage());
+            error_log("[MqManager::statsMySQL] Error: " . $e->getMessage());
             return [];
         }
     }
 
-    /**
-     * 释放超时锁定的消息
-     * @return int 释放的消息数量
-     */
-    public static function releaseExpiredLocks()
+    protected static function releaseExpiredLocksMySQL()
     {
         try {
-            $pdo = self::getConnection();
+            $pdo = self::getMySQLConnection();
             $expireTime = date('Y-m-d H:i:s', time() - self::$lockTimeout);
             
             $sql = "UPDATE `mq` SET `lockMark` = '', `lockTime` = '2000-01-01 00:00:00' 
@@ -687,35 +1038,15 @@ class MqManager
             
             return $stmt->rowCount();
         } catch (\PDOException $e) {
-            error_log("[MqManager::releaseExpiredLocks] Error: " . $e->getMessage());
+            error_log("[MqManager::releaseExpiredLocksMySQL] Error: " . $e->getMessage());
             return 0;
         }
     }
 
-    /**
-     * 关闭数据库连接
-     * @param string|null $vHost 虚拟主机名称，null表示关闭所有连接
-     */
-    public static function close($vHost = null)
-    {
-        if ($vHost !== null) {
-            DbManager::close($vHost);
-        } else {
-            DbManager::closeAll();
-        }
-    }
-
-    /**
-     * 分页查询消息列表
-     * @param array $filter 筛选条件
-     * @param int $page 页码
-     * @param int $pageSize 每页数量
-     * @return array ['list' => [], 'total' => 0, 'page' => 1, 'pageSize' => 20]
-     */
-    public static function getList($filter = [], $page = 1, $pageSize = 20)
+    protected static function getListMySQL($filter = [], $page = 1, $pageSize = 20)
     {
         try {
-            $pdo = self::getConnection();
+            $pdo = self::getMySQLConnection();
             $where = ['`vHost` = :vHost'];
             $params = [':vHost' => self::$vHost];
             
@@ -790,19 +1121,15 @@ class MqManager
                 'totalPages' => ceil($total / $pageSize)
             ];
         } catch (\PDOException $e) {
-            error_log("[MqManager::getList] Error: " . $e->getMessage());
+            error_log("[MqManager::getListMySQL] Error: " . $e->getMessage());
             return ['list' => [], 'total' => 0, 'page' => $page, 'pageSize' => $pageSize, 'totalPages' => 0];
         }
     }
 
-    /**
-     * 获取所有队列名称列表
-     * @return array
-     */
-    public static function getNameList()
+    protected static function getNameListMySQL()
     {
         try {
-            $pdo = self::getConnection();
+            $pdo = self::getMySQLConnection();
             $sql = "SELECT DISTINCT `name` FROM `mq` WHERE `vHost` = :vHost ORDER BY `name`";
             $stmt = $pdo->prepare($sql);
             $stmt->execute([':vHost' => self::$vHost]);
@@ -813,19 +1140,15 @@ class MqManager
             }
             return $list;
         } catch (\PDOException $e) {
-            error_log("[MqManager::getNameList] Error: " . $e->getMessage());
+            error_log("[MqManager::getNameListMySQL] Error: " . $e->getMessage());
             return [];
         }
     }
 
-    /**
-     * 获取所有队列组列表
-     * @return array
-     */
-    public static function getGroupList()
+    protected static function getGroupListMySQL()
     {
         try {
-            $pdo = self::getConnection();
+            $pdo = self::getMySQLConnection();
             $sql = "SELECT DISTINCT `group` FROM `mq` WHERE `vHost` = :vHost ORDER BY `group`";
             $stmt = $pdo->prepare($sql);
             $stmt->execute([':vHost' => self::$vHost]);
@@ -836,21 +1159,15 @@ class MqManager
             }
             return $list;
         } catch (\PDOException $e) {
-            error_log("[MqManager::getGroupList] Error: " . $e->getMessage());
+            error_log("[MqManager::getGroupListMySQL] Error: " . $e->getMessage());
             return [];
         }
     }
 
-    /**
-     * 根据unqid和name获取消息详情
-     * @param string $name 队列名称
-     * @param string $unqid 消息唯一标识
-     * @return array|null
-     */
-    public static function getByUnqid($name, $unqid)
+    protected static function getByUnqidMySQL($name, $unqid)
     {
         try {
-            $pdo = self::getConnection();
+            $pdo = self::getMySQLConnection();
             $sql = "SELECT * FROM `mq` WHERE `name` = :name AND `unqid` = :unqid AND `vHost` = :vHost LIMIT 1";
             $stmt = $pdo->prepare($sql);
             $stmt->execute([':name' => $name, ':unqid' => $unqid, ':vHost' => self::$vHost]);
@@ -860,42 +1177,29 @@ class MqManager
             }
             return $row ?: null;
         } catch (\PDOException $e) {
-            error_log("[MqManager::getByUnqid] Error: " . $e->getMessage());
+            error_log("[MqManager::getByUnqidMySQL] Error: " . $e->getMessage());
             return null;
         }
     }
 
-    /**
-     * 根据unqid和name删除消息
-     * @param string $name 队列名称
-     * @param string $unqid 消息唯一标识
-     * @return bool
-     */
-    public static function deleteByUnqid($name, $unqid)
+    protected static function deleteByUnqidMySQL($name, $unqid)
     {
         try {
-            $pdo = self::getConnection();
+            $pdo = self::getMySQLConnection();
             $sql = "DELETE FROM `mq` WHERE `name` = :name AND `unqid` = :unqid AND `vHost` = :vHost";
             $stmt = $pdo->prepare($sql);
             $stmt->execute([':name' => $name, ':unqid' => $unqid, ':vHost' => self::$vHost]);
             return $stmt->rowCount() > 0;
         } catch (\PDOException $e) {
-            error_log("[MqManager::deleteByUnqid] Error: " . $e->getMessage());
+            error_log("[MqManager::deleteByUnqidMySQL] Error: " . $e->getMessage());
             return false;
         }
     }
 
-    /**
-     * 重置失败消息
-     * 将锁定时间改为当前时间，重试次数和等级清零
-     * @param string $name 队列名称
-     * @param string $unqid 消息唯一标识
-     * @return bool
-     */
-    public static function resetByUnqid($name, $unqid)
+    protected static function resetByUnqidMySQL($name, $unqid)
     {
         try {
-            $pdo = self::getConnection();
+            $pdo = self::getMySQLConnection();
             $now = date('Y-m-d H:i:s');
             
             $sql = "UPDATE `mq` SET 
@@ -914,21 +1218,15 @@ class MqManager
             ]);
             return $stmt->rowCount() > 0;
         } catch (\PDOException $e) {
-            error_log("[MqManager::resetByUnqid] Error: " . $e->getMessage());
+            error_log("[MqManager::resetByUnqidMySQL] Error: " . $e->getMessage());
             return false;
         }
     }
 
-    /**
-     * 锁定消息（用于手动执行）
-     * @param string $name 队列名称
-     * @param string $unqid 消息唯一标识
-     * @return string|false 返回锁标识，失败返回false
-     */
-    public static function lockByUnqid($name, $unqid)
+    protected static function lockByUnqidMySQL($name, $unqid)
     {
         try {
-            $pdo = self::getConnection();
+            $pdo = self::getMySQLConnection();
             $lockMark = self::generateLockMark();
             $now = date('Y-m-d H:i:s');
             
@@ -945,24 +1243,15 @@ class MqManager
             
             return $stmt->rowCount() > 0 ? $lockMark : false;
         } catch (\PDOException $e) {
-            error_log("[MqManager::lockByUnqid] Error: " . $e->getMessage());
+            error_log("[MqManager::lockByUnqidMySQL] Error: " . $e->getMessage());
             return false;
         }
     }
 
-    /**
-     * 解锁消息（执行失败时放回队列）
-     * @param string $name 队列名称
-     * @param string $unqid 消息唯一标识
-     * @param string $lockMark 锁标识
-     * @param bool $incrementRetry 是否增加重试次数
-     * @param int $delaySeconds 自定义延迟秒数，0表示使用默认延迟
-     * @return bool
-     */
-    public static function unlockByUnqid($name, $unqid, $lockMark, $incrementRetry = true, $delaySeconds = 0)
+    protected static function unlockByUnqidMySQL($name, $unqid, $lockMark, $incrementRetry = true, $delaySeconds = 0)
     {
         try {
-            $pdo = self::getConnection();
+            $pdo = self::getMySQLConnection();
             
             if ($incrementRetry) {
                 if ($delaySeconds > 0) {
@@ -1019,22 +1308,15 @@ class MqManager
             
             return $stmt->rowCount() > 0;
         } catch (\PDOException $e) {
-            error_log("[MqManager::unlockByUnqid] Error: " . $e->getMessage());
+            error_log("[MqManager::unlockByUnqidMySQL] Error: " . $e->getMessage());
             return false;
         }
     }
 
-    /**
-     * 确认消息消费完成并删除（通过unqid）
-     * @param string $name 队列名称
-     * @param string $unqid 消息唯一标识
-     * @param string $lockMark 锁标识
-     * @return bool
-     */
-    public static function ackByUnqid($name, $unqid, $lockMark)
+    protected static function ackByUnqidMySQL($name, $unqid, $lockMark)
     {
         try {
-            $pdo = self::getConnection();
+            $pdo = self::getMySQLConnection();
             $sql = "DELETE FROM `mq` WHERE `name` = :name AND `unqid` = :unqid AND `lockMark` = :lockMark AND `vHost` = :vHost";
             $stmt = $pdo->prepare($sql);
             $stmt->execute([
@@ -1045,7 +1327,946 @@ class MqManager
             ]);
             return $stmt->rowCount() > 0;
         } catch (\PDOException $e) {
-            error_log("[MqManager::ackByUnqid] Error: " . $e->getMessage());
+            error_log("[MqManager::ackByUnqidMySQL] Error: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    // ==================== Redis 存储实现 ====================
+
+    /**
+     * 获取Redis键名
+     */
+    protected static function getRedisKey($type, $mqName = '')
+    {
+        $vHost = self::$vHost;
+        switch ($type) {
+            case 'queue':
+                return "mq:{$vHost}:{$mqName}:queue";
+            case 'messages':
+                return "mq:{$vHost}:{$mqName}:messages";
+            case 'delay':
+                return "mq:{$vHost}:{$mqName}:delay";
+            case 'lock':
+                return "mq:{$vHost}:{$mqName}:lock";
+            case 'all':
+                return "mq:{$vHost}:all_messages";
+            case 'names':
+                return "mq:{$vHost}:names";
+            case 'groups':
+                return "mq:{$vHost}:groups";
+            default:
+                return "mq:{$vHost}:{$type}";
+        }
+    }
+
+    protected static function setRedis($mqName, $data, $vhost = null, $group = null, $customMsgId = null, $delaySecond = 0)
+    {
+        try {
+            $msgVHost = $vhost ?? self::$vHost;
+            $msgGroup = $group ?? self::$group;
+            $redis = self::getRedisConnection($msgVHost);
+            $msgId = $customMsgId ?? self::generateMsgId();
+            $unqid = self::generateUnqidWithVHost($mqName, $msgId, $msgVHost, $msgGroup);
+            $now = time();
+            $nowStr = date('Y-m-d H:i:s', $now);
+            
+            // 计算执行时间
+            $executeTime = $delaySecond > 0 ? $now + $delaySecond : $now;
+            $lockTime = $delaySecond > 0 ? date('Y-m-d H:i:s', $executeTime) : '2000-01-01 00:00:00';
+            
+            $message = [
+                'id' => $msgId,
+                'data' => $data,
+                'time' => $now
+            ];
+            
+            // 检查消息是否已存在（用于覆盖写入）
+            $messagesKey = "mq:{$msgVHost}:{$mqName}:messages";
+            $existingData = $redis->hGet($messagesKey, $unqid);
+            $isUpdate = !empty($existingData);
+            
+            // 消息详情
+            $msgData = [
+                'unqid' => $unqid,
+                'vHost' => $msgVHost,
+                'group' => $msgGroup,
+                'name' => $mqName,
+                'msgId' => $msgId,
+                'data' => json_encode($message, JSON_UNESCAPED_UNICODE),
+                'syncCount' => 0,
+                'syncLevel' => 0,
+                'lockTime' => $lockTime,
+                'lockMark' => '',
+                'createTime' => $nowStr,
+                'updateTime' => $nowStr
+            ];
+            
+            // 如果是更新，保留原来的createTime
+            if ($isUpdate) {
+                $oldData = json_decode($existingData, true);
+                $msgData['createTime'] = $oldData['createTime'] ?? $nowStr;
+                
+                // 从旧的队列中移除（可能在普通队列或延迟队列中）
+                $queueKey = "mq:{$msgVHost}:{$mqName}:queue";
+                $delayKey = "mq:{$msgVHost}:{$mqName}:delay";
+                $redis->lRem($queueKey, 0, $unqid);
+                $redis->zRem($delayKey, $unqid);
+            }
+            
+            // 保存消息到Hash
+            $redis->hSet($messagesKey, $unqid, json_encode($msgData, JSON_UNESCAPED_UNICODE));
+            
+            // 根据是否延迟决定添加到哪个队列
+            if ($delaySecond > 0) {
+                // 添加到延迟队列
+                $delayKey = "mq:{$msgVHost}:{$mqName}:delay";
+                $redis->zAdd($delayKey, $executeTime, $unqid);
+            } else {
+                // 添加到待处理队列
+                $queueKey = "mq:{$msgVHost}:{$mqName}:queue";
+                $redis->rPush($queueKey, $unqid);
+            }
+            
+            // 添加到全局索引（用于分页查询）- 只有新消息才添加
+            if (!$isUpdate) {
+                $allKey = "mq:{$msgVHost}:all_messages";
+                $redis->zAdd($allKey, $now, "{$mqName}:{$unqid}");
+            }
+            
+            // 添加队列名称和组到索引
+            $namesKey = "mq:{$msgVHost}:names";
+            $groupsKey = "mq:{$msgVHost}:groups";
+            $redis->sAdd($namesKey, $mqName);
+            $redis->sAdd($groupsKey, $msgGroup);
+            
+            return $msgId;
+        } catch (\Exception $e) {
+            error_log("[MqManager::setRedis] Error: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    protected static function pushRedis($mqName, $message, $delaySeconds = 0)
+    {
+        try {
+            $redis = self::getRedisConnection();
+            $msgId = $message['id'] ?? self::generateMsgId();
+            $unqid = self::generateUnqid($mqName, $msgId);
+            $now = time();
+            $nowStr = date('Y-m-d H:i:s', $now);
+            
+            $syncCount = $message['_syncCount'] ?? $message['syncCount'] ?? 0;
+            $syncLevel = $syncCount;
+            
+            // 存储前移除内部字段
+            $storeMessage = $message;
+            unset($storeMessage['_syncCount'], $storeMessage['_syncLevel'], $storeMessage['_unqid'], $storeMessage['_lockMark']);
+            
+            // 计算可执行时间
+            if ($delaySeconds > 0) {
+                $executeTime = $now + $delaySeconds;
+            } else {
+                $delayMinutes = $syncLevel * 5;
+                $executeTime = $now + $delayMinutes * 60;
+            }
+            
+            $messagesKey = self::getRedisKey('messages', $mqName);
+            $existingData = $redis->hGet($messagesKey, $unqid);
+            
+            if ($existingData) {
+                // 更新已存在的消息
+                $msgData = json_decode($existingData, true);
+                $msgData['data'] = json_encode($storeMessage, JSON_UNESCAPED_UNICODE);
+                $msgData['syncCount'] = $syncCount;
+                $msgData['syncLevel'] = $syncLevel;
+                $msgData['lockTime'] = date('Y-m-d H:i:s', $executeTime);
+                $msgData['lockMark'] = '';
+                $msgData['updateTime'] = $nowStr;
+            } else {
+                // 新消息
+                $msgData = [
+                    'unqid' => $unqid,
+                    'vHost' => self::$vHost,
+                    'group' => self::$group,
+                    'name' => $mqName,
+                    'msgId' => $msgId,
+                    'data' => json_encode($storeMessage, JSON_UNESCAPED_UNICODE),
+                    'syncCount' => $syncCount,
+                    'syncLevel' => $syncLevel,
+                    'lockTime' => date('Y-m-d H:i:s', $executeTime),
+                    'lockMark' => '',
+                    'createTime' => $nowStr,
+                    'updateTime' => $nowStr
+                ];
+                
+                // 添加到全局索引
+                $allKey = self::getRedisKey('all');
+                $redis->zAdd($allKey, $now, "{$mqName}:{$unqid}");
+            }
+            
+            $redis->hSet($messagesKey, $unqid, json_encode($msgData, JSON_UNESCAPED_UNICODE));
+            
+            // 如果有延迟，添加到延迟队列
+            if ($executeTime > $now) {
+                $delayKey = self::getRedisKey('delay', $mqName);
+                $redis->zAdd($delayKey, $executeTime, $unqid);
+            } else {
+                // 立即可执行，添加到待处理队列
+                $queueKey = self::getRedisKey('queue', $mqName);
+                $redis->rPush($queueKey, $unqid);
+            }
+            
+            return true;
+        } catch (\Exception $e) {
+            error_log("[MqManager::pushRedis] Error: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    protected static function lengthRedis($mqName)
+    {
+        try {
+            $redis = self::getRedisConnection();
+            $queueKey = self::getRedisKey('queue', $mqName);
+            $delayKey = self::getRedisKey('delay', $mqName);
+            $lockKey = self::getRedisKey('lock', $mqName);
+            
+            // 总数 = 待处理 + 延迟 + 锁定
+            $queueLen = $redis->lLen($queueKey) ?: 0;
+            $delayLen = $redis->zCard($delayKey) ?: 0;
+            $lockLen = $redis->hLen($lockKey) ?: 0;
+            
+            return $queueLen + $delayLen + $lockLen;
+        } catch (\Exception $e) {
+            error_log("[MqManager::lengthRedis] Error: " . $e->getMessage());
+            return 0;
+        }
+    }
+
+    protected static function clearRedis($mqName)
+    {
+        try {
+            $redis = self::getRedisConnection();
+            
+            // 删除所有相关键
+            $redis->del(self::getRedisKey('queue', $mqName));
+            $redis->del(self::getRedisKey('messages', $mqName));
+            $redis->del(self::getRedisKey('delay', $mqName));
+            $redis->del(self::getRedisKey('lock', $mqName));
+            
+            // 从全局索引中移除
+            $allKey = self::getRedisKey('all');
+            $allMessages = $redis->zRange($allKey, 0, -1);
+            foreach ($allMessages as $item) {
+                if (strpos($item, "{$mqName}:") === 0) {
+                    $redis->zRem($allKey, $item);
+                }
+            }
+            
+            return true;
+        } catch (\Exception $e) {
+            error_log("[MqManager::clearRedis] Error: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    protected static function peekRedis($mqName, $limit = 10)
+    {
+        try {
+            $redis = self::getRedisConnection();
+            $queueKey = self::getRedisKey('queue', $mqName);
+            $messagesKey = self::getRedisKey('messages', $mqName);
+            
+            $unqids = $redis->lRange($queueKey, 0, $limit - 1);
+            
+            $messages = [];
+            foreach ($unqids as $unqid) {
+                $msgData = $redis->hGet($messagesKey, $unqid);
+                if ($msgData) {
+                    $row = json_decode($msgData, true);
+                    $msg = json_decode($row['data'], true);
+                    if ($msg) $messages[] = $msg;
+                }
+            }
+            return $messages;
+        } catch (\Exception $e) {
+            error_log("[MqManager::peekRedis] Error: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    protected static function popRedis($mqName)
+    {
+        try {
+            $redis = self::getRedisConnection();
+            $now = time();
+            $lockMark = self::generateLockMark();
+            
+            // 先检查延迟队列，将到期的消息移动到待处理队列
+            $delayKey = self::getRedisKey('delay', $mqName);
+            $queueKey = self::getRedisKey('queue', $mqName);
+            $messagesKey = self::getRedisKey('messages', $mqName);
+            $lockKey = self::getRedisKey('lock', $mqName);
+            
+            // 获取所有到期的延迟消息
+            $dueMessages = $redis->zRangeByScore($delayKey, '-inf', $now);
+            foreach ($dueMessages as $unqid) {
+                $redis->zRem($delayKey, $unqid);
+                $redis->rPush($queueKey, $unqid);
+            }
+            
+            // 尝试从队列中获取消息
+            $unqid = $redis->lPop($queueKey);
+            if (!$unqid) {
+                return null;
+            }
+            
+            // 获取消息详情
+            $msgData = $redis->hGet($messagesKey, $unqid);
+            if (!$msgData) {
+                return null;
+            }
+            
+            $row = json_decode($msgData, true);
+            
+            // 锁定消息
+            $row['lockMark'] = $lockMark;
+            $row['lockTime'] = date('Y-m-d H:i:s', $now);
+            $redis->hSet($messagesKey, $unqid, json_encode($row, JSON_UNESCAPED_UNICODE));
+            
+            // 添加到锁定集合
+            $redis->hSet($lockKey, $unqid, json_encode([
+                'lockMark' => $lockMark,
+                'lockTime' => $now
+            ]));
+            
+            // 解析消息数据
+            $message = json_decode($row['data'], true);
+            if ($message) {
+                $message['_unqid'] = $unqid;
+                $message['_lockMark'] = $lockMark;
+                $message['_syncCount'] = (int)$row['syncCount'];
+                $message['_syncLevel'] = (int)$row['syncLevel'];
+            }
+            
+            return $message;
+        } catch (\Exception $e) {
+            error_log("[MqManager::popRedis] Error: " . $e->getMessage());
+            return null;
+        }
+    }
+
+    protected static function ackRedis($mqName, $message)
+    {
+        if (empty($message['_unqid']) || empty($message['_lockMark'])) {
+            return false;
+        }
+        
+        try {
+            $redis = self::getRedisConnection();
+            $unqid = $message['_unqid'];
+            $lockMark = $message['_lockMark'];
+            
+            $messagesKey = self::getRedisKey('messages', $mqName);
+            $lockKey = self::getRedisKey('lock', $mqName);
+            $allKey = self::getRedisKey('all');
+            
+            // 验证锁标识
+            $lockData = $redis->hGet($lockKey, $unqid);
+            if ($lockData) {
+                $lock = json_decode($lockData, true);
+                if (($lock['lockMark'] ?? '') !== $lockMark) {
+                    return false;
+                }
+            }
+            
+            // 删除消息
+            $redis->hDel($messagesKey, $unqid);
+            $redis->hDel($lockKey, $unqid);
+            $redis->zRem($allKey, "{$mqName}:{$unqid}");
+            
+            return true;
+        } catch (\Exception $e) {
+            error_log("[MqManager::ackRedis] Error: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    protected static function nackRedis($mqName, $message, $delaySeconds = 0)
+    {
+        if (empty($message['_unqid']) || empty($message['_lockMark'])) {
+            return false;
+        }
+        
+        try {
+            $redis = self::getRedisConnection();
+            $now = time();
+            $nowStr = date('Y-m-d H:i:s', $now);
+            $unqid = $message['_unqid'];
+            
+            $messagesKey = self::getRedisKey('messages', $mqName);
+            $lockKey = self::getRedisKey('lock', $mqName);
+            $delayKey = self::getRedisKey('delay', $mqName);
+            
+            // 计算新的重试次数和等级
+            $syncCount = ($message['_syncCount'] ?? 0) + 1;
+            $syncLevel = $syncCount;
+            
+            // 计算下次执行时间
+            if ($delaySeconds > 0) {
+                $executeTime = $now + $delaySeconds;
+            } else {
+                // 指数增长延迟：2^n 分钟
+                $delayMinutes = pow(2, $syncCount);
+                $executeTime = $now + $delayMinutes * 60;
+            }
+            
+            // 更新消息数据
+            $msgData = $redis->hGet($messagesKey, $unqid);
+            if ($msgData) {
+                $row = json_decode($msgData, true);
+                $row['syncCount'] = $syncCount;
+                $row['syncLevel'] = $syncLevel;
+                $row['lockTime'] = date('Y-m-d H:i:s', $executeTime);
+                $row['lockMark'] = '';
+                $row['updateTime'] = $nowStr;
+                $redis->hSet($messagesKey, $unqid, json_encode($row, JSON_UNESCAPED_UNICODE));
+            }
+            
+            // 从锁定集合移除
+            $redis->hDel($lockKey, $unqid);
+            
+            // 添加到延迟队列
+            $redis->zAdd($delayKey, $executeTime, $unqid);
+            
+            return true;
+        } catch (\Exception $e) {
+            error_log("[MqManager::nackRedis] Error: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    protected static function unshiftRedis($mqName, $message)
+    {
+        try {
+            $redis = self::getRedisConnection();
+            $msgId = $message['id'] ?? self::generateMsgId();
+            $unqid = self::generateUnqid($mqName, $msgId);
+            $now = time();
+            $nowStr = date('Y-m-d H:i:s', $now);
+            
+            $messagesKey = self::getRedisKey('messages', $mqName);
+            $queueKey = self::getRedisKey('queue', $mqName);
+            $allKey = self::getRedisKey('all');
+            
+            $existingData = $redis->hGet($messagesKey, $unqid);
+            
+            if ($existingData) {
+                // 更新已存在的消息
+                $msgData = json_decode($existingData, true);
+                $msgData['data'] = json_encode($message, JSON_UNESCAPED_UNICODE);
+                $msgData['lockTime'] = '2000-01-01 00:00:00';
+                $msgData['lockMark'] = '';
+                $msgData['syncLevel'] = 0;
+                $msgData['updateTime'] = $nowStr;
+            } else {
+                // 新消息
+                $msgData = [
+                    'unqid' => $unqid,
+                    'vHost' => self::$vHost,
+                    'group' => self::$group,
+                    'name' => $mqName,
+                    'msgId' => $msgId,
+                    'data' => json_encode($message, JSON_UNESCAPED_UNICODE),
+                    'syncCount' => 0,
+                    'syncLevel' => 0,
+                    'lockTime' => '2000-01-01 00:00:00',
+                    'lockMark' => '',
+                    'createTime' => $nowStr,
+                    'updateTime' => $nowStr
+                ];
+                
+                // 添加到全局索引
+                $redis->zAdd($allKey, $now, "{$mqName}:{$unqid}");
+            }
+            
+            $redis->hSet($messagesKey, $unqid, json_encode($msgData, JSON_UNESCAPED_UNICODE));
+            
+            // 添加到队列头部（高优先级）
+            $redis->lPush($queueKey, $unqid);
+            
+            return true;
+        } catch (\Exception $e) {
+            error_log("[MqManager::unshiftRedis] Error: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    protected static function getByMsgIdRedis($msgId)
+    {
+        try {
+            $redis = self::getRedisConnection();
+            $namesKey = self::getRedisKey('names');
+            $names = $redis->sMembers($namesKey);
+            
+            foreach ($names as $mqName) {
+                $messagesKey = self::getRedisKey('messages', $mqName);
+                $allMessages = $redis->hGetAll($messagesKey);
+                
+                foreach ($allMessages as $unqid => $data) {
+                    $row = json_decode($data, true);
+                    if (($row['msgId'] ?? '') === $msgId) {
+                        return json_decode($row['data'], true);
+                    }
+                }
+            }
+            return null;
+        } catch (\Exception $e) {
+            error_log("[MqManager::getByMsgIdRedis] Error: " . $e->getMessage());
+            return null;
+        }
+    }
+
+    protected static function deleteRedis($msgId)
+    {
+        try {
+            $redis = self::getRedisConnection();
+            $namesKey = self::getRedisKey('names');
+            $names = $redis->sMembers($namesKey);
+            
+            foreach ($names as $mqName) {
+                $messagesKey = self::getRedisKey('messages', $mqName);
+                $allMessages = $redis->hGetAll($messagesKey);
+                
+                foreach ($allMessages as $unqid => $data) {
+                    $row = json_decode($data, true);
+                    if (($row['msgId'] ?? '') === $msgId) {
+                        // 找到消息，删除
+                        $redis->hDel($messagesKey, $unqid);
+                        
+                        // 从其他相关结构中移除
+                        $queueKey = self::getRedisKey('queue', $mqName);
+                        $delayKey = self::getRedisKey('delay', $mqName);
+                        $lockKey = self::getRedisKey('lock', $mqName);
+                        $allKey = self::getRedisKey('all');
+                        
+                        $redis->lRem($queueKey, 0, $unqid);
+                        $redis->zRem($delayKey, $unqid);
+                        $redis->hDel($lockKey, $unqid);
+                        $redis->zRem($allKey, "{$mqName}:{$unqid}");
+                        
+                        return true;
+                    }
+                }
+            }
+            return false;
+        } catch (\Exception $e) {
+            error_log("[MqManager::deleteRedis] Error: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    protected static function statsRedis()
+    {
+        try {
+            $redis = self::getRedisConnection();
+            $namesKey = self::getRedisKey('names');
+            $names = $redis->sMembers($namesKey);
+            
+            $stats = [];
+            foreach ($names as $mqName) {
+                $queueKey = self::getRedisKey('queue', $mqName);
+                $delayKey = self::getRedisKey('delay', $mqName);
+                $lockKey = self::getRedisKey('lock', $mqName);
+                
+                $queueLen = $redis->lLen($queueKey) ?: 0;
+                $delayLen = $redis->zCard($delayKey) ?: 0;
+                $lockLen = $redis->hLen($lockKey) ?: 0;
+                
+                $stats[$mqName] = [
+                    'total' => $queueLen + $delayLen + $lockLen,
+                    'locked' => $lockLen,
+                    'pending' => $queueLen + $delayLen
+                ];
+            }
+            return $stats;
+        } catch (\Exception $e) {
+            error_log("[MqManager::statsRedis] Error: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    protected static function releaseExpiredLocksRedis()
+    {
+        try {
+            $redis = self::getRedisConnection();
+            $now = time();
+            $expireTime = $now - self::$lockTimeout;
+            $namesKey = self::getRedisKey('names');
+            $names = $redis->sMembers($namesKey);
+            
+            $released = 0;
+            foreach ($names as $mqName) {
+                $lockKey = self::getRedisKey('lock', $mqName);
+                $messagesKey = self::getRedisKey('messages', $mqName);
+                $queueKey = self::getRedisKey('queue', $mqName);
+                
+                $locks = $redis->hGetAll($lockKey);
+                foreach ($locks as $unqid => $lockData) {
+                    $lock = json_decode($lockData, true);
+                    if (($lock['lockTime'] ?? 0) < $expireTime) {
+                        // 锁已过期，释放
+                        $redis->hDel($lockKey, $unqid);
+                        
+                        // 更新消息状态
+                        $msgData = $redis->hGet($messagesKey, $unqid);
+                        if ($msgData) {
+                            $row = json_decode($msgData, true);
+                            $row['lockMark'] = '';
+                            $row['lockTime'] = '2000-01-01 00:00:00';
+                            $redis->hSet($messagesKey, $unqid, json_encode($row, JSON_UNESCAPED_UNICODE));
+                        }
+                        
+                        // 放回队列
+                        $redis->rPush($queueKey, $unqid);
+                        $released++;
+                    }
+                }
+            }
+            return $released;
+        } catch (\Exception $e) {
+            error_log("[MqManager::releaseExpiredLocksRedis] Error: " . $e->getMessage());
+            return 0;
+        }
+    }
+
+    protected static function getListRedis($filter = [], $page = 1, $pageSize = 20)
+    {
+        try {
+            $redis = self::getRedisConnection();
+            $namesKey = self::getRedisKey('names');
+            $allKey = self::getRedisKey('all');
+            
+            // 获取所有消息
+            $allMessages = [];
+            $names = $redis->sMembers($namesKey);
+            
+            foreach ($names as $mqName) {
+                // 筛选队列名称
+                if (!empty($filter['name']) && strpos($mqName, $filter['name']) === false) {
+                    continue;
+                }
+                
+                $messagesKey = self::getRedisKey('messages', $mqName);
+                $messages = $redis->hGetAll($messagesKey);
+                
+                foreach ($messages as $unqid => $data) {
+                    $row = json_decode($data, true);
+                    
+                    // 应用筛选条件
+                    if (!empty($filter['group']) && ($row['group'] ?? '') !== $filter['group']) {
+                        continue;
+                    }
+                    if (!empty($filter['msgId']) && strpos($row['msgId'] ?? '', $filter['msgId']) === false) {
+                        continue;
+                    }
+                    if (!empty($filter['data']) && strpos($row['data'] ?? '', $filter['data']) === false) {
+                        continue;
+                    }
+                    if (isset($filter['locked'])) {
+                        $isLocked = !empty($row['lockMark']);
+                        if ($filter['locked'] && !$isLocked) continue;
+                        if (!$filter['locked'] && $isLocked) continue;
+                    }
+                    if (isset($filter['syncLevel']) && $filter['syncLevel'] !== '' && 
+                        (int)($row['syncLevel'] ?? 0) !== (int)$filter['syncLevel']) {
+                        continue;
+                    }
+                    
+                    // 移除data字段以提升性能（与MySQL行为一致）
+                    unset($row['data']);
+                    $allMessages[] = $row;
+                }
+            }
+            
+            // 排序（按syncLevel升序，createTime降序）
+            usort($allMessages, function ($a, $b) {
+                if ($a['syncLevel'] !== $b['syncLevel']) {
+                    return $a['syncLevel'] - $b['syncLevel'];
+                }
+                return strcmp($b['createTime'], $a['createTime']);
+            });
+            
+            // 分页
+            $total = count($allMessages);
+            $offset = ($page - 1) * $pageSize;
+            $list = array_slice($allMessages, $offset, $pageSize);
+            
+            return [
+                'list' => $list,
+                'total' => $total,
+                'page' => $page,
+                'pageSize' => $pageSize,
+                'totalPages' => ceil($total / $pageSize)
+            ];
+        } catch (\Exception $e) {
+            error_log("[MqManager::getListRedis] Error: " . $e->getMessage());
+            return ['list' => [], 'total' => 0, 'page' => $page, 'pageSize' => $pageSize, 'totalPages' => 0];
+        }
+    }
+
+    protected static function getNameListRedis()
+    {
+        try {
+            $redis = self::getRedisConnection();
+            $namesKey = self::getRedisKey('names');
+            $names = $redis->sMembers($namesKey);
+            sort($names);
+            return $names ?: [];
+        } catch (\Exception $e) {
+            error_log("[MqManager::getNameListRedis] Error: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    protected static function getGroupListRedis()
+    {
+        try {
+            $redis = self::getRedisConnection();
+            $groupsKey = self::getRedisKey('groups');
+            $groups = $redis->sMembers($groupsKey);
+            sort($groups);
+            return $groups ?: [];
+        } catch (\Exception $e) {
+            error_log("[MqManager::getGroupListRedis] Error: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    protected static function getByUnqidRedis($name, $unqid)
+    {
+        try {
+            $redis = self::getRedisConnection();
+            $messagesKey = self::getRedisKey('messages', $name);
+            
+            $msgData = $redis->hGet($messagesKey, $unqid);
+            if (!$msgData) {
+                return null;
+            }
+            
+            $row = json_decode($msgData, true);
+            $row['data'] = json_decode($row['data'], true);
+            return $row;
+        } catch (\Exception $e) {
+            error_log("[MqManager::getByUnqidRedis] Error: " . $e->getMessage());
+            return null;
+        }
+    }
+
+    protected static function deleteByUnqidRedis($name, $unqid)
+    {
+        try {
+            $redis = self::getRedisConnection();
+            
+            $messagesKey = self::getRedisKey('messages', $name);
+            $queueKey = self::getRedisKey('queue', $name);
+            $delayKey = self::getRedisKey('delay', $name);
+            $lockKey = self::getRedisKey('lock', $name);
+            $allKey = self::getRedisKey('all');
+            
+            $deleted = $redis->hDel($messagesKey, $unqid);
+            $redis->lRem($queueKey, 0, $unqid);
+            $redis->zRem($delayKey, $unqid);
+            $redis->hDel($lockKey, $unqid);
+            $redis->zRem($allKey, "{$name}:{$unqid}");
+            
+            return $deleted > 0;
+        } catch (\Exception $e) {
+            error_log("[MqManager::deleteByUnqidRedis] Error: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    protected static function resetByUnqidRedis($name, $unqid)
+    {
+        try {
+            $redis = self::getRedisConnection();
+            $now = time();
+            $nowStr = date('Y-m-d H:i:s', $now);
+            
+            $messagesKey = self::getRedisKey('messages', $name);
+            $queueKey = self::getRedisKey('queue', $name);
+            $delayKey = self::getRedisKey('delay', $name);
+            
+            $msgData = $redis->hGet($messagesKey, $unqid);
+            if (!$msgData) {
+                return false;
+            }
+            
+            $row = json_decode($msgData, true);
+            
+            // 检查是否被锁定
+            if (!empty($row['lockMark'])) {
+                return false;
+            }
+            
+            // 重置
+            $row['syncCount'] = 0;
+            $row['syncLevel'] = 0;
+            $row['lockTime'] = $nowStr;
+            $row['updateTime'] = $nowStr;
+            
+            $redis->hSet($messagesKey, $unqid, json_encode($row, JSON_UNESCAPED_UNICODE));
+            
+            // 从延迟队列移除并加入待处理队列
+            $redis->zRem($delayKey, $unqid);
+            
+            // 避免重复添加到队列
+            $redis->lRem($queueKey, 0, $unqid);
+            $redis->rPush($queueKey, $unqid);
+            
+            return true;
+        } catch (\Exception $e) {
+            error_log("[MqManager::resetByUnqidRedis] Error: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    protected static function lockByUnqidRedis($name, $unqid)
+    {
+        try {
+            $redis = self::getRedisConnection();
+            $lockMark = self::generateLockMark();
+            $now = time();
+            $nowStr = date('Y-m-d H:i:s', $now);
+            
+            $messagesKey = self::getRedisKey('messages', $name);
+            $lockKey = self::getRedisKey('lock', $name);
+            $queueKey = self::getRedisKey('queue', $name);
+            $delayKey = self::getRedisKey('delay', $name);
+            
+            $msgData = $redis->hGet($messagesKey, $unqid);
+            if (!$msgData) {
+                return false;
+            }
+            
+            $row = json_decode($msgData, true);
+            
+            // 检查是否已被锁定
+            if (!empty($row['lockMark'])) {
+                return false;
+            }
+            
+            // 锁定消息
+            $row['lockMark'] = $lockMark;
+            $row['lockTime'] = $nowStr;
+            $redis->hSet($messagesKey, $unqid, json_encode($row, JSON_UNESCAPED_UNICODE));
+            
+            // 添加到锁定集合
+            $redis->hSet($lockKey, $unqid, json_encode([
+                'lockMark' => $lockMark,
+                'lockTime' => $now
+            ]));
+            
+            // 从待处理队列和延迟队列移除
+            $redis->lRem($queueKey, 0, $unqid);
+            $redis->zRem($delayKey, $unqid);
+            
+            return $lockMark;
+        } catch (\Exception $e) {
+            error_log("[MqManager::lockByUnqidRedis] Error: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    protected static function unlockByUnqidRedis($name, $unqid, $lockMark, $incrementRetry = true, $delaySeconds = 0)
+    {
+        try {
+            $redis = self::getRedisConnection();
+            $now = time();
+            $nowStr = date('Y-m-d H:i:s', $now);
+            
+            $messagesKey = self::getRedisKey('messages', $name);
+            $lockKey = self::getRedisKey('lock', $name);
+            $queueKey = self::getRedisKey('queue', $name);
+            $delayKey = self::getRedisKey('delay', $name);
+            
+            $msgData = $redis->hGet($messagesKey, $unqid);
+            if (!$msgData) {
+                return false;
+            }
+            
+            $row = json_decode($msgData, true);
+            
+            // 验证锁标识
+            if (($row['lockMark'] ?? '') !== $lockMark) {
+                return false;
+            }
+            
+            if ($incrementRetry) {
+                $row['syncCount'] = ($row['syncCount'] ?? 0) + 1;
+                $row['syncLevel'] = ($row['syncLevel'] ?? 0) + 1;
+                
+                if ($delaySeconds > 0) {
+                    $executeTime = $now + $delaySeconds;
+                } else {
+                    // 默认延迟（syncLevel * 5分钟）
+                    $executeTime = $now + $row['syncLevel'] * 5 * 60;
+                }
+                $row['lockTime'] = date('Y-m-d H:i:s', $executeTime);
+            } else {
+                $row['lockTime'] = '2000-01-01 00:00:00';
+            }
+            
+            $row['lockMark'] = '';
+            $row['updateTime'] = $nowStr;
+            
+            $redis->hSet($messagesKey, $unqid, json_encode($row, JSON_UNESCAPED_UNICODE));
+            
+            // 从锁定集合移除
+            $redis->hDel($lockKey, $unqid);
+            
+            // 根据是否有延迟决定放入哪个队列
+            if ($incrementRetry && isset($executeTime) && $executeTime > $now) {
+                $redis->zAdd($delayKey, $executeTime, $unqid);
+            } else {
+                $redis->rPush($queueKey, $unqid);
+            }
+            
+            return true;
+        } catch (\Exception $e) {
+            error_log("[MqManager::unlockByUnqidRedis] Error: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    protected static function ackByUnqidRedis($name, $unqid, $lockMark)
+    {
+        try {
+            $redis = self::getRedisConnection();
+            
+            $messagesKey = self::getRedisKey('messages', $name);
+            $lockKey = self::getRedisKey('lock', $name);
+            $allKey = self::getRedisKey('all');
+            
+            // 验证锁标识
+            $msgData = $redis->hGet($messagesKey, $unqid);
+            if ($msgData) {
+                $row = json_decode($msgData, true);
+                if (($row['lockMark'] ?? '') !== $lockMark) {
+                    return false;
+                }
+            }
+            
+            // 删除消息
+            $redis->hDel($messagesKey, $unqid);
+            $redis->hDel($lockKey, $unqid);
+            $redis->zRem($allKey, "{$name}:{$unqid}");
+            
+            return true;
+        } catch (\Exception $e) {
+            error_log("[MqManager::ackByUnqidRedis] Error: " . $e->getMessage());
             return false;
         }
     }
