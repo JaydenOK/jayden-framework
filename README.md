@@ -82,6 +82,36 @@ utils php常用工具集合 (一般一个工具存放在一个文件夹)
 -- pdo操作mysql数据库，支持ORM  
 ```
 
+#### 消息队列模块
+基于 MySQL 存储的轻量级 PHP 消息队列系统，位于 `system/` 目录。
+
+**功能特性：**
+- 支持多消费者进程并行消费
+- 失败自动重试（指数退避策略）
+- 消息锁机制，确保消息不被重复消费
+- 配置热加载，修改队列配置后自动生效
+- 支持 Windows & Linux 环境
+- 提供 Web 管理界面，可视化监控
+
+**快速使用：**
+```php
+// 发送消息
+MqManager::set('queueName', ['userId' => 123, 'action' => 'register']);
+
+// 启动消费者
+// php index.php system/mq/daemon
+```
+
+**CLI 命令：**
+```bash
+php index.php system/mq/daemon    # 后台启动
+php index.php system/mq/stop      # 停止
+php index.php system/mq/restart   # 重启
+php index.php system/mq/status    # 查看状态
+```
+
+详细使用说明参见：[消息队列使用说明文档](system/消息队列使用说明文档.md)
+
 #### docs_md 文档
 ```shell script
 window与linux远程文件同步.sh
