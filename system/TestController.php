@@ -20,7 +20,7 @@ class TestController extends Controller
      * 测试队列1 - 消费者回调
      *
      * @param array $message 消息数据，结构如下：
-     *                       - id: 消息ID
+     *                       - _msgId: 消息ID
      *                       - data: 实际数据（MqManager::set 传入的第二个参数）
      *                       - time: 消息创建时间戳
      *                       - microtime: 消息创建微秒时间
@@ -28,57 +28,81 @@ class TestController extends Controller
      */
     public static function testMq1($message)
     {
+        $syncCount = $message['_syncCount'] ?? 1;
+        $msgId = $message['_msgId'] ?? '';
         // 记录开始处理
         $logFile = __DIR__ . '/data/mq/log/testMq1.log';
         $logDir = dirname($logFile);
         if (!is_dir($logDir)) {
             mkdir($logDir, 0777, true);
         }
-        file_put_contents($logFile, date('[Y-m-d H:i:s]') . json_encode($message, JSON_UNESCAPED_UNICODE) . PHP_EOL, FILE_APPEND);
-        sleep(5);       //模拟程序正在执行，延迟锁定
-        return 600;
+        file_put_contents($logFile, date('[Y-m-d H:i:s]') . ':syncCount:' . $syncCount . ':' . json_encode($message, JSON_UNESCAPED_UNICODE) . PHP_EOL, FILE_APPEND);
+        sleep(3);       //模拟程序正在执行，延迟锁定
+        if ($syncCount > 5) {
+            //超过指定次数，删除队列信息
+            return true;
+        }
+        return false;
     }
 
     //测试队列 - 消费者回调
     public static function checkUser($message)
     {
         // 记录开始处理
+        $syncCount = $message['_syncCount'] ?? 1;
+        $msgId = $message['_msgId'] ?? '';
         $logFile = __DIR__ . '/data/mq/log/testMq2.log';
         $logDir = dirname($logFile);
         if (!is_dir($logDir)) {
             mkdir($logDir, 0777, true);
         }
-        file_put_contents($logFile, date('[Y-m-d H:i:s]') . json_encode($message, JSON_UNESCAPED_UNICODE) . PHP_EOL, FILE_APPEND);
-        sleep(5);       //模拟程序正在执行，延迟锁定
-        return 600;
+        file_put_contents($logFile, date('[Y-m-d H:i:s]') . ':syncCount:' . $syncCount . ':' . json_encode($message, JSON_UNESCAPED_UNICODE) . PHP_EOL, FILE_APPEND);
+        sleep(3);       //模拟程序正在执行，延迟锁定
+        if ($syncCount > 5) {
+            //超过指定次数，删除队列信息
+            return true;
+        }
+        return false;
     }
 
     //测试队列2 - 消费者回调
     public static function testMq2($message)
     {
+        $syncCount = $message['_syncCount'] ?? 1;
+        $msgId = $message['_msgId'] ?? '';
         // 记录开始处理
         $logFile = __DIR__ . '/data/mq/log/testMq2.log';
         $logDir = dirname($logFile);
         if (!is_dir($logDir)) {
             mkdir($logDir, 0777, true);
         }
-        file_put_contents($logFile, date('[Y-m-d H:i:s]') . json_encode($message, JSON_UNESCAPED_UNICODE) . PHP_EOL, FILE_APPEND);
-        sleep(5);       //模拟程序正在执行，延迟锁定
-        return 600;
+        file_put_contents($logFile, date('[Y-m-d H:i:s]') . ':syncCount:' . $syncCount . ':' . json_encode($message, JSON_UNESCAPED_UNICODE) . PHP_EOL, FILE_APPEND);
+        sleep(3);       //模拟程序正在执行，延迟锁定
+        if ($syncCount > 5) {
+            //超过指定次数，删除队列信息
+            return true;
+        }
+        return false;
     }
 
     //测试队列testRedisMq - 消费者回调
     public static function testRedisMq($message)
     {
+        $syncCount = $message['_syncCount'] ?? 1;
+        $msgId = $message['_msgId'] ?? '';
         // 记录开始处理
         $logFile = __DIR__ . '/data/mq/log/testRedisMq.log';
         $logDir = dirname($logFile);
         if (!is_dir($logDir)) {
             mkdir($logDir, 0777, true);
         }
-        file_put_contents($logFile, date('[Y-m-d H:i:s]') . json_encode($message, JSON_UNESCAPED_UNICODE) . PHP_EOL, FILE_APPEND);
-        sleep(5);       //模拟程序正在执行，延迟锁定
-        return 600;
+        file_put_contents($logFile, date('[Y-m-d H:i:s]') . ':syncCount:' . $syncCount . ':' . json_encode($message, JSON_UNESCAPED_UNICODE) . PHP_EOL, FILE_APPEND);
+        sleep(3);       //模拟程序正在执行，延迟锁定
+        if ($syncCount > 5) {
+            //超过指定次数，删除队列信息
+            return true;
+        }
+        return false;
     }
 
     /**
