@@ -20,7 +20,7 @@ class TestController extends Controller
      * 测试队列1 - 消费者回调
      *
      * @param array $message 消息数据，结构如下：
-     *                       - _msgId: 消息ID
+     *                       - msgId: 消息ID
      *                       - data: 实际数据（MqManager::set 传入的第二个参数）
      *                       - time: 消息创建时间戳
      *                       - microtime: 消息创建微秒时间

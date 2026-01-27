@@ -1074,8 +1074,11 @@ HTML;
         .status-text.stopped { color: #ff4d4f; }
         
         .actions { display: flex; gap: 8px; flex-wrap: wrap; }
-        .btn { padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; transition: all 0.2s; text-decoration: none; display: inline-block; }
+        .btn { padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; transition: all 0.2s; text-decoration: none; display: inline-block; position: relative; }
         .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .btn.loading { pointer-events: none; }
+        .btn.loading::after { content: ''; position: absolute; width: 12px; height: 12px; top: 50%; right: 8px; transform: translateY(-50%); border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 0.6s linear infinite; }
+        @keyframes spin { to { transform: translateY(-50%) rotate(360deg); } }
         .btn-primary { background: #1890ff; color: #fff; }
         .btn-primary:hover:not(:disabled) { background: #40a9ff; }
         .btn-danger { background: #ff4d4f; color: #fff; }
@@ -1148,10 +1151,10 @@ php index.php system/mq/status  # 查看状态</pre>
                 </span>
             </h1>
             <div class="actions">
-                <button onclick="doAction('start')" class="btn btn-primary">启动</button>
-                <button onclick="doAction('stop')" class="btn btn-danger">停止</button>
-                <button onclick="doAction('stop', true)" class="btn btn-danger" title="强制停止所有进程，不等待任务完成">强制停止</button>
-                <button onclick="doAction('restart')" class="btn btn-warning">重启</button>
+                <button id="btnStart" onclick="doAction('start')" class="btn btn-primary">启动</button>
+                <button id="btnStop" onclick="doAction('stop')" class="btn btn-danger">停止</button>
+                <button id="btnForceStop" onclick="doAction('stop', true)" class="btn btn-danger" title="强制停止所有进程，不等待任务完成">强制停止</button>
+                <button id="btnRestart" onclick="doAction('restart')" class="btn btn-warning">重启</button>
                 <button onclick="refresh()" class="btn btn-default">刷新</button>
                 <a href="/system/mq/list" class="btn btn-purple">消息列表</a>
             </div>
@@ -1201,8 +1204,43 @@ php index.php system/mq/status  # 查看状态</pre>
         }
         
         async function doAction(action, force = false) {
-            const btns = document.querySelectorAll('.btn');
-            btns.forEach(b => b.disabled = true);
+            // 获取当前点击的按钮
+            let btnId = '';
+            let btnText = '';
+            let loadingText = '';
+            
+            if (action === 'start') {
+                btnId = 'btnStart';
+                btnText = '启动';
+                loadingText = '启动中...';
+            } else if (action === 'stop' && force) {
+                btnId = 'btnForceStop';
+                btnText = '强制停止';
+                loadingText = '强制停止中...';
+            } else if (action === 'stop') {
+                btnId = 'btnStop';
+                btnText = '停止';
+                loadingText = '停止中...';
+            } else if (action === 'restart') {
+                btnId = 'btnRestart';
+                btnText = '重启';
+                loadingText = '重启中...';
+            }
+            
+            const btn = btnId ? document.getElementById(btnId) : null;
+            const allBtns = document.querySelectorAll('.btn');
+            
+            // 禁用所有按钮并显示加载状态
+            allBtns.forEach(b => {
+                if (b.tagName === 'BUTTON') {
+                    b.disabled = true;
+                }
+            });
+            
+            if (btn) {
+                btn.textContent = loadingText;
+                btn.classList.add('loading');
+            }
             
             try {
                 const url = '/system/mq/' + action + (force ? '?force=1' : '');
@@ -1212,8 +1250,19 @@ php index.php system/mq/status  # 查看状态</pre>
                 setTimeout(() => loadStatus(), 1000);
             } catch (e) {
                 showToast('请求失败: ' + e.message, 'error');
+            } finally {
+                // 恢复按钮状态
+                allBtns.forEach(b => {
+                    if (b.tagName === 'BUTTON') {
+                        b.disabled = false;
+                    }
+                });
+                
+                if (btn) {
+                    btn.textContent = btnText;
+                    btn.classList.remove('loading');
+                }
             }
-            btns.forEach(b => b.disabled = false);
         }
         
         async function sendTest(vhost, queue, count = 1) {

@@ -686,9 +686,9 @@ class MqManager
             // - 立即消息：lockTime = '2000-01-01'（历史时间，可立即被pop获取）
             $lockTime = $delaySecond > 0 ? date('Y-m-d H:i:s', $now + $delaySecond) : '2000-01-01 00:00:00';
 
-            // 消息体结构：_msgId(消息ID), data(业务数据), time(发送时间戳)
+            // 消息体结构：msgId(消息ID), data(业务数据), time(发送时间戳)
             $message = [
-                '_msgId' => $msgId,
+                'msgId' => $msgId,
                 'data' => $data,
                 'time' => $now
             ];
@@ -732,7 +732,7 @@ class MqManager
     {
         try {
             $pdo = self::getMySQLConnection();
-            $msgId = $message['_msgId'] ?? self::generateMsgId();
+            $msgId = $message['msgId'] ?? self::generateMsgId();
             $unqid = self::generateUnqid($mqName, $msgId);
             $now = date('Y-m-d H:i:s');
 
@@ -740,7 +740,7 @@ class MqManager
             $syncCount = $message['_syncCount'] ?? $message['syncCount'] ?? 0;
             $syncLevel = $syncCount;
 
-            // 存储前移除内部字段（以 _ 开头的是运行时附加字段）
+            // 存储前移除内部字段（以 _ 开头的是运行时附加字段，msgId 保留）
             $storeMessage = $message;
             unset($storeMessage['_syncCount'], $storeMessage['_syncLevel']);
 
@@ -1053,7 +1053,7 @@ class MqManager
     {
         try {
             $pdo = self::getMySQLConnection();
-            $msgId = $message['_msgId'] ?? self::generateMsgId();
+            $msgId = $message['msgId'] ?? self::generateMsgId();
             $unqid = self::generateUnqid($mqName, $msgId);
             $now = date('Y-m-d H:i:s');
 
@@ -1534,9 +1534,9 @@ class MqManager
             $executeTime = $delaySecond > 0 ? $now + $delaySecond : $now;
             $lockTime = $delaySecond > 0 ? date('Y-m-d H:i:s', $executeTime) : '2000-01-01 00:00:00';
 
-            // 消息体：_msgId + data + time
+            // 消息体：msgId + data + time
             $message = [
-                '_msgId' => $msgId,
+                'msgId' => $msgId,
                 'data' => $data,
                 'time' => $now
             ];
@@ -1611,7 +1611,7 @@ class MqManager
     {
         try {
             $redis = self::getRedisConnection();
-            $msgId = $message['_msgId'] ?? self::generateMsgId();
+            $msgId = $message['msgId'] ?? self::generateMsgId();
             $unqid = self::generateUnqid($mqName, $msgId);
             $now = time();
             $nowStr = date('Y-m-d H:i:s', $now);
@@ -1619,7 +1619,7 @@ class MqManager
             $syncCount = $message['_syncCount'] ?? $message['syncCount'] ?? 0;
             $syncLevel = $syncCount;
 
-            // 存储前移除内部字段
+            // 存储前移除内部字段（保留 msgId）
             $storeMessage = $message;
             unset($storeMessage['_syncCount'], $storeMessage['_syncLevel'], $storeMessage['_unqid'], $storeMessage['_lockMark']);
 
@@ -1945,7 +1945,7 @@ class MqManager
     {
         try {
             $redis = self::getRedisConnection();
-            $msgId = $message['_msgId'] ?? self::generateMsgId();
+            $msgId = $message['msgId'] ?? self::generateMsgId();
             $unqid = self::generateUnqid($mqName, $msgId);
             $now = time();
             $nowStr = date('Y-m-d H:i:s', $now);
@@ -3114,7 +3114,7 @@ class MqManager
 
             if ($message !== null) {
                 self::updateLockFile($lockFile, ['busy' => true]);
-                $msgId = $message['_msgId'] ?? $message['_unqid'] ?? 'unknown';
+                $msgId = $message['msgId'] ?? $message['_unqid'] ?? 'unknown';
 
                 try {
                     // 执行回调前再次检查停止标志（防止在pop和busy设置之间收到停止信号）
