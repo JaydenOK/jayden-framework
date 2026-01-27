@@ -158,7 +158,7 @@ class MqController extends Controller
      * 停止主进程
      * 
      * 支持两种停止方式：
-     * 1. 优雅停止（默认）：发送停止信号，等待主进程和消费者处理完当前任务后退出
+     * 1. 优雅停止（默认）：发送停止信号，等待主进程和消费者处理完当前任务后退出（最多等待60秒）
      * 2. 强制停止（force=1）：立即kill所有进程，不等待任务完成
      * 
      * @return mixed JSON响应（Web请求）或直接输出（CLI）
@@ -166,22 +166,61 @@ class MqController extends Controller
     public function stop()
     {
         // 获取是否强制停止参数（支持GET/POST/CLI参数）
-        $force = !empty($_GET['force']) || !empty($_POST['force']) || $this->getArg('force') === 'true';
+        // 支持 force=1, force=true, force=yes 等多种形式
+        $forceParam = $_GET['force'] ?? $_POST['force'] ?? $this->getArg('force');
+        $force = !empty($forceParam) && in_array(strtolower($forceParam), ['1', 'true', 'yes', 'on'], true);
 
-        // 检查主进程是否在运行
+        // 强制停止：立即kill所有进程（包括主进程和所有消费者）
+        // 即使主进程未运行，也要停止所有残留的消费者进程
+        if ($force) {
+            MqManager::forceStopAll();
+            // 等待进程完全退出
+            sleep(1);
+            
+            // 检查是否还有进程在运行
+            $masterRunning = MqManager::isMasterRunning();
+            if ($masterRunning) {
+                return $this->response(1, '强制停止失败，主进程可能仍在运行');
+            }
+            
+            // 通过状态数据检查是否还有消费者进程在运行
+            $status = MqManager::getStatusData();
+            $stillRunning = 0;
+            foreach ($status['vhosts'] ?? [] as $vhostData) {
+                foreach ($vhostData['queues'] ?? [] as $queue) {
+                    foreach ($queue['consumers'] ?? [] as $consumer) {
+                        if ($consumer['running'] ?? false) {
+                            $stillRunning++;
+                        }
+                    }
+                }
+            }
+            
+            if ($stillRunning > 0) {
+                return $this->response(1, "强制停止完成，但仍有 {$stillRunning} 个消费者进程在运行");
+            }
+            
+            return $this->response(0, '已强制停止所有进程');
+        }
+
+        // 优雅停止：需要主进程在运行
         if (!MqManager::isMasterRunning()) {
             return $this->response(0, '主进程未运行');
         }
 
-        // 强制停止：立即kill所有进程
-        if ($force) {
+        // 优雅停止：通过设置锁文件中的停止标志，带超时机制
+        $success = MqManager::stopMaster(60);
+        if ($success) {
+            return $this->response(0, '已优雅停止');
+        } else {
+            // 如果优雅停止失败，尝试强制停止
             MqManager::forceStopAll();
-            return $this->response(0, '已强制停止');
+            sleep(1);
+            if (MqManager::isMasterRunning()) {
+                return $this->response(1, '停止失败，请尝试强制停止');
+            }
+            return $this->response(0, '优雅停止超时，已自动强制停止');
         }
-
-        // 优雅停止：通过设置锁文件中的停止标志
-        MqManager::stopMaster();
-        return $this->response(0, '已发送停止信号');
     }
 
     /**
@@ -1111,6 +1150,7 @@ php index.php system/mq/status  # 查看状态</pre>
             <div class="actions">
                 <button onclick="doAction('start')" class="btn btn-primary">启动</button>
                 <button onclick="doAction('stop')" class="btn btn-danger">停止</button>
+                <button onclick="doAction('stop', true)" class="btn btn-danger" title="强制停止所有进程，不等待任务完成">强制停止</button>
                 <button onclick="doAction('restart')" class="btn btn-warning">重启</button>
                 <button onclick="refresh()" class="btn btn-default">刷新</button>
                 <a href="/system/mq/list" class="btn btn-purple">消息列表</a>
@@ -1160,12 +1200,13 @@ php index.php system/mq/status  # 查看状态</pre>
             setTimeout(() => toast.remove(), 3000);
         }
         
-        async function doAction(action) {
+        async function doAction(action, force = false) {
             const btns = document.querySelectorAll('.btn');
             btns.forEach(b => b.disabled = true);
             
             try {
-                const res = await fetch('/system/mq/' + action);
+                const url = '/system/mq/' + action + (force ? '?force=1' : '');
+                const res = await fetch(url);
                 const data = await res.json();
                 showToast(data.message, data.code === 0 ? 'success' : 'error');
                 setTimeout(() => loadStatus(), 1000);

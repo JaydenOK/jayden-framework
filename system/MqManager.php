@@ -2827,12 +2827,15 @@ class MqManager
      * @param string $mqName 队列名称
      * @param int $consumerId 消费者ID
      * @param bool $force 是否强制停止
+     * @return bool 是否成功发送停止信号
      */
     public static function stopConsumer($vHost, $mqName, $consumerId, $force = false)
     {
         $lockFile = self::getConsumerLockFile($mqName, $consumerId, $vHost);
         $lock = self::readLockFile($lockFile);
-        if (!$lock) return;
+        if (!$lock) {
+            return false; // 消费者不存在
+        }
 
         $lock['stopping'] = true;
         $lock['force'] = $force;
@@ -2840,8 +2843,13 @@ class MqManager
 
         if ($force && !empty($lock['pid'])) {
             self::killProcess($lock['pid']);
+            // 强制停止时立即删除锁文件
+            sleep(1); // 等待进程退出
             self::deleteLockFile($lockFile);
+            return true;
         }
+
+        return true;
     }
 
     /**
@@ -2849,9 +2857,11 @@ class MqManager
      *
      * @param array &$consumers 消费者状态数组（引用传递）
      * @param bool $force 是否强制停止
+     * @param int $timeout 优雅停止超时时间（秒），超时后自动强制停止，默认30秒
      */
-    public static function stopAllConsumers(&$consumers, $force = false)
+    public static function stopAllConsumers(&$consumers, $force = false, $timeout = 30)
     {
+        // 先发送停止信号
         foreach ($consumers as $vHost => $queues) {
             foreach ($queues as $mqName => $list) {
                 foreach ($list as $id => $time) {
@@ -2860,23 +2870,44 @@ class MqManager
             }
         }
 
-        if (!$force) {
-            for ($i = 0; $i < 30; $i++) {
-                $allStopped = true;
-                foreach ($consumers as $vHost => $queues) {
-                    foreach ($queues as $mqName => $list) {
-                        foreach ($list as $id => $time) {
-                            if (self::isConsumerRunning($mqName, $id, $vHost)) {
-                                $allStopped = false;
-                                break 3;
-                            }
+        // 如果强制停止，直接返回
+        if ($force) {
+            return;
+        }
+
+        // 优雅停止：等待消费者处理完当前消息后退出
+        $startTime = time();
+        for ($i = 0; $i < $timeout; $i++) {
+            $allStopped = true;
+            foreach ($consumers as $vHost => $queues) {
+                foreach ($queues as $mqName => $list) {
+                    foreach ($list as $id => $time) {
+                        if (self::isConsumerRunning($mqName, $id, $vHost)) {
+                            $allStopped = false;
+                            break 3;
                         }
                     }
                 }
-                if ($allStopped) break;
-                sleep(1);
+            }
+            if ($allStopped) {
+                echo "[INFO] 所有消费者已优雅停止\n";
+                return;
+            }
+            sleep(1);
+        }
+
+        // 超时后强制停止
+        echo "[WARN] 优雅停止超时（{$timeout}秒），开始强制停止所有消费者\n";
+        foreach ($consumers as $vHost => $queues) {
+            foreach ($queues as $mqName => $list) {
+                foreach ($list as $id => $time) {
+                    self::stopConsumer($vHost, $mqName, $id, true);
+                }
             }
         }
+        
+        // 等待进程完全退出
+        sleep(2);
     }
 
     /**
@@ -2894,7 +2925,17 @@ class MqManager
                 if (!isset($consumers[$vHost][$mqName])) $consumers[$vHost][$mqName] = [];
 
                 for ($i = 1; $i <= $cNum; $i++) {
+                    // 检查消费者是否在运行
                     if (!self::isConsumerRunning($mqName, $i, $vHost)) {
+                        // 检查锁文件，如果正在停止则不重启
+                        $lockFile = self::getConsumerLockFile($mqName, $i, $vHost);
+                        $lock = self::readLockFile($lockFile);
+                        
+                        // 如果锁文件存在且设置了停止标志，说明正在停止中，不重启
+                        if ($lock && !empty($lock['stopping'])) {
+                            continue;
+                        }
+                        
                         echo "[WARN] 消费者 {$vHost}/{$mqName}#{$i} 异常，重启中...\n";
                         self::startConsumer($vHost, $mqName, $i);
                         $consumers[$vHost][$mqName][$i] = time();
@@ -2986,6 +3027,12 @@ class MqManager
 
             $lock = self::readLockFile(self::getMasterLockFile());
             if ($lock && !empty($lock['stopping'])) {
+                // 如果设置了强制停止，立即退出
+                if (!empty($lock['force'])) {
+                    echo "[INFO] 收到强制停止信号，立即退出\n";
+                    break;
+                }
+                // 优雅停止：等待所有消费者停止后退出
                 break;
             }
 
@@ -3000,7 +3047,22 @@ class MqManager
             sleep(self::$checkInterval);
         }
 
-        self::stopAllConsumers($consumers);
+        // 检查是否强制停止
+        $lock = self::readLockFile(self::getMasterLockFile());
+        $force = !empty($lock['force']);
+        
+        // 先通过 consumers 数组停止（优雅停止）
+        if (!$force) {
+            self::stopAllConsumers($consumers, false, 30);
+        }
+        
+        // 无论是否强制停止，都扫描锁文件确保所有消费者都被停止
+        // 这样可以处理配置文件中没有的队列或主进程异常退出后残留的进程
+        $stopped = self::stopAllConsumersByLockFiles($force);
+        if ($stopped > 0) {
+            echo "[INFO] 额外停止了 {$stopped} 个消费者进程（通过锁文件扫描）\n";
+        }
+        
         self::deleteLockFile(self::getMasterLockFile());
         echo "[INFO] 主进程退出\n";
     }
@@ -3031,9 +3093,20 @@ class MqManager
 
         echo "[INFO] 消费者启动: {$vHost}/{$mqName}#{$consumerId}\n";
 
-        while (true) {
+        // 检查是否应该停止的辅助函数
+        $shouldStop = function() use ($lockFile) {
             $lock = self::readLockFile($lockFile);
-            if ($lock && !empty($lock['stopping']) && (empty($lock['busy']) || !empty($lock['force']))) {
+            if (!$lock) return false;
+            // 如果设置了强制停止，立即退出
+            if (!empty($lock['force'])) return true;
+            // 如果设置了停止标志且当前不忙，退出
+            if (!empty($lock['stopping']) && empty($lock['busy'])) return true;
+            return false;
+        };
+
+        while (true) {
+            // 在循环开始时检查停止标志
+            if ($shouldStop()) {
                 break;
             }
 
@@ -3044,7 +3117,29 @@ class MqManager
                 $msgId = $message['_msgId'] ?? $message['_unqid'] ?? 'unknown';
 
                 try {
+                    // 执行回调前再次检查停止标志（防止在pop和busy设置之间收到停止信号）
+                    if ($shouldStop()) {
+                        // 如果设置了强制停止，将消息放回队列
+                        if (self::readLockFile($lockFile)['force'] ?? false) {
+                            self::nack($mqName, $message, 0);
+                            echo "[INFO] 收到强制停止信号，消息已放回队列: {$msgId}\n";
+                        }
+                        self::updateLockFile($lockFile, ['busy' => false]);
+                        break;
+                    }
+
                     $result = self::executeCallbackWithReturn($config, $message);
+
+                    // 执行回调后检查停止标志
+                    if ($shouldStop()) {
+                        // 如果设置了强制停止，不确认消息，直接退出
+                        if (self::readLockFile($lockFile)['force'] ?? false) {
+                            self::nack($mqName, $message, 0);
+                            echo "[INFO] 收到强制停止信号，消息已放回队列: {$msgId}\n";
+                            self::updateLockFile($lockFile, ['busy' => false]);
+                            break;
+                        }
+                    }
 
                     if ($result === true) {
                         self::ack($mqName, $message);
@@ -3153,25 +3248,77 @@ class MqManager
     }
 
     /**
+     * 扫描并停止所有消费者进程（通过锁文件）
+     * 
+     * 扫描锁文件目录，找到所有消费者锁文件并停止对应的进程
+     * 不依赖配置文件，即使配置文件中没有的队列也会被停止
+     */
+    protected static function stopAllConsumersByLockFiles($force = false)
+    {
+        $stopped = 0;
+        $isCli = php_sapi_name() === 'cli';
+        
+        // 扫描所有锁文件
+        $lockFiles = glob(self::$lockPath . '/consumer_*.lock');
+        foreach ($lockFiles as $lockFile) {
+            $lock = self::readLockFile($lockFile);
+            if (!$lock || empty($lock['pid'])) {
+                continue;
+            }
+            
+            // 设置停止标志
+            $lock['stopping'] = true;
+            $lock['force'] = $force;
+            file_put_contents($lockFile, json_encode($lock));
+            
+            // 如果进程还在运行，kill它
+            if (self::isProcessRunning($lock['pid'])) {
+                self::killProcess($lock['pid']);
+                $stopped++;
+                if ($isCli) {
+                    echo "[INFO] 停止消费者进程 PID:{$lock['pid']} ({$lock['vHost']}/{$lock['mqName']}#{$lock['consumerId']})\n";
+                }
+            }
+        }
+        
+        return $stopped;
+    }
+
+    /**
      * 强制停止所有进程
+     * 
+     * 先设置强制停止标志，然后kill所有进程，最后清理锁文件
+     * 不依赖配置文件，会扫描所有锁文件来停止所有进程
      */
     public static function forceStopAll()
     {
-        $lock = self::readLockFile(self::getMasterLockFile());
+        $isCli = php_sapi_name() === 'cli';
+        
+        // 先设置主进程的强制停止标志
+        $lockFile = self::getMasterLockFile();
+        $lock = self::readLockFile($lockFile);
         if ($lock) {
-            self::killProcess($lock['pid'] ?? 0);
-        }
-
-        foreach (self::$mqConfig as $vHost => $queues) {
-            foreach ($queues as $mqName => $config) {
-                $cNum = (int)($config['cNum'] ?? 1);
-                for ($i = 1; $i <= $cNum; $i++) {
-                    $cLock = self::readLockFile(self::getConsumerLockFile($mqName, $i, $vHost));
-                    self::killProcess($cLock['pid'] ?? 0);
+            $lock['stopping'] = true;
+            $lock['force'] = true;
+            file_put_contents($lockFile, json_encode($lock));
+            if (!empty($lock['pid']) && self::isProcessRunning($lock['pid'])) {
+                self::killProcess($lock['pid']);
+                if ($isCli) {
+                    echo "[INFO] 停止主进程 PID:{$lock['pid']}\n";
                 }
             }
         }
 
+        // 扫描所有消费者锁文件并停止（不依赖配置文件）
+        $stopped = self::stopAllConsumersByLockFiles(true);
+        if ($isCli) {
+            echo "[INFO] 已停止 {$stopped} 个消费者进程\n";
+        }
+
+        // 等待进程退出
+        sleep(1);
+        
+        // 清理所有锁文件
         self::cleanAllLockFiles();
     }
 
@@ -3179,14 +3326,75 @@ class MqManager
      * 优雅停止主进程
      *
      * 通过设置锁文件中的停止标志，主进程会在下次循环检查时退出
+     * 停止主进程时，也会停止所有消费者进程（通过扫描锁文件）
+     * 
+     * @param int $timeout 优雅停止超时时间（秒），超时后自动强制停止，默认60秒
+     * @return bool 是否成功停止
      */
-    public static function stopMaster()
+    public static function stopMaster($timeout = 60)
     {
         $lockFile = self::getMasterLockFile();
         $lock = self::readLockFile($lockFile);
-        if ($lock) {
-            $lock['stopping'] = true;
-            file_put_contents($lockFile, json_encode($lock));
+        $isCli = php_sapi_name() === 'cli';
+        
+        if (!$lock) {
+            // 主进程未运行，但仍需要停止所有残留的消费者进程
+            if ($isCli) {
+                echo "[INFO] 主进程未运行，扫描并停止所有残留的消费者进程\n";
+            }
+            $stopped = self::stopAllConsumersByLockFiles(false);
+            if ($stopped > 0) {
+                if ($isCli) {
+                    echo "[INFO] 已停止 {$stopped} 个残留的消费者进程\n";
+                }
+                sleep(1);
+                self::cleanAllLockFiles();
+            }
+            return true;
         }
+
+        // 设置停止标志
+        $lock['stopping'] = true;
+        file_put_contents($lockFile, json_encode($lock));
+
+        // 等待主进程退出
+        $startTime = time();
+        while (time() - $startTime < $timeout) {
+            if (!self::isMasterRunning()) {
+                if ($isCli) {
+                    echo "[INFO] 主进程已优雅停止\n";
+                }
+                // 主进程退出后，再次扫描确保所有消费者都被停止
+                $stopped = self::stopAllConsumersByLockFiles(false);
+                if ($stopped > 0) {
+                    if ($isCli) {
+                        echo "[INFO] 主进程退出后，额外停止了 {$stopped} 个消费者进程\n";
+                    }
+                    sleep(1);
+                }
+                return true;
+            }
+            sleep(1);
+        }
+
+        // 超时后强制停止
+        if ($isCli) {
+            echo "[WARN] 优雅停止超时（{$timeout}秒），开始强制停止主进程和所有消费者\n";
+        }
+        if (!empty($lock['pid'])) {
+            $lock['force'] = true;
+            file_put_contents($lockFile, json_encode($lock));
+            self::killProcess($lock['pid']);
+            // 强制停止所有消费者
+            $stopped = self::stopAllConsumersByLockFiles(true);
+            if ($isCli) {
+                echo "[INFO] 已强制停止 {$stopped} 个消费者进程\n";
+            }
+            sleep(1);
+            self::cleanAllLockFiles();
+            return !self::isMasterRunning();
+        }
+
+        return false;
     }
 }

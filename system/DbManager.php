@@ -108,6 +108,15 @@ class DbManager
         if (!isset(self::$connections[$vHost])) {
             self::$connections[$vHost] = self::createConnection($vHost);
         }
+        
+        // 检查连接是否有效（用于常驻进程中的连接健康检测）
+        try {
+            self::$connections[$vHost]->query('SELECT 1');
+        } catch (\Exception $e) {
+            // 连接断开，重新连接
+            self::$connections[$vHost] = self::createConnection($vHost);
+        }
+        
         return self::$connections[$vHost];
     }
 

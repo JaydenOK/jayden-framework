@@ -29,7 +29,7 @@ class TestController extends Controller
     public static function testMq1($message)
     {
         $syncCount = $message['_syncCount'] ?? 1;
-        $msgId = $message['_msgId'] ?? '';
+        $msgId = $message['msgId'] ?? '';
         // 记录开始处理
         $logFile = __DIR__ . '/data/mq/log/testMq1.log';
         $logDir = dirname($logFile);
@@ -50,7 +50,7 @@ class TestController extends Controller
     {
         // 记录开始处理
         $syncCount = $message['_syncCount'] ?? 1;
-        $msgId = $message['_msgId'] ?? '';
+        $msgId = $message['msgId'] ?? '';
         $logFile = __DIR__ . '/data/mq/log/testMq2.log';
         $logDir = dirname($logFile);
         if (!is_dir($logDir)) {
@@ -69,7 +69,7 @@ class TestController extends Controller
     public static function testMq2($message)
     {
         $syncCount = $message['_syncCount'] ?? 1;
-        $msgId = $message['_msgId'] ?? '';
+        $msgId = $message['msgId'] ?? '';
         // 记录开始处理
         $logFile = __DIR__ . '/data/mq/log/testMq2.log';
         $logDir = dirname($logFile);
@@ -89,7 +89,7 @@ class TestController extends Controller
     public static function testRedisMq($message)
     {
         $syncCount = $message['_syncCount'] ?? 1;
-        $msgId = $message['_msgId'] ?? '';
+        $msgId = $message['msgId'] ?? '';
         // 记录开始处理
         $logFile = __DIR__ . '/data/mq/log/testRedisMq.log';
         $logDir = dirname($logFile);
