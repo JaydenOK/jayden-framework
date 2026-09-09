@@ -3022,7 +3022,8 @@ class MqManager
 
         while (self::$running) {
             if (!self::$isWindows && function_exists('pcntl_signal_dispatch')) {
-                pcntl_signal_dispatch();
+                //用来立刻处理（分发）当前进程已经收到但还没执行的信号，从而触发你用 pcntl_signal() 注册的信号处理器（handler）。简单说：让“挂起的信号”马上跑进你的回调里执行。
+                pcntl_signal_dispatch();             // 让 SIGTERM 等信号回调及时执行
             }
 
             $lock = self::readLockFile(self::getMasterLockFile());
